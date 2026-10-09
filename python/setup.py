@@ -36,6 +36,20 @@ MUJOCO_PATH = 'MUJOCO_PATH'
 MUJOCO_PLUGIN_PATH = 'MUJOCO_PLUGIN_PATH'
 
 EXT_PREFIX = 'mujoco.'
+REQUIRED_EXTENSIONS = frozenset(
+  {
+    'mujoco._callbacks',
+    'mujoco._constants',
+    'mujoco._enums',
+    'mujoco._errors',
+    'mujoco._functions',
+    'mujoco._render',
+    'mujoco._rollout',
+    'mujoco._simulate',
+    'mujoco._specs',
+    'mujoco._structs',
+  }
+)
 
 
 def get_long_description():
@@ -130,6 +144,17 @@ def parse_cmake_args_from_environ(env_var_name=MUJOCO_CMAKE_ARGS):
   return out
 
 
+def get_macos_arch_args():
+  if platform.system() != 'Darwin' or not os.environ.get('ARCHFLAGS'):
+    return []
+  archs = [
+    arch
+    for arch in ('x86_64', 'arm64')
+    if f'-arch {arch}' in os.environ['ARCHFLAGS']
+  ]
+  return [f'-DCMAKE_OSX_ARCHITECTURES={";".join(archs)}'] if archs else []
+
+
 class CMakeExtension(setuptools.Extension):
   """A Python extension that has been prebuilt by CMake.
 
@@ -146,6 +171,7 @@ class BuildCMakeExtension(build_ext.build_ext):
 
   def run(self):
     self._is_apple = platform.system() == 'Darwin'
+    self._binding_source = self._prepare_source()
     (
         self._mujoco_library_path,
         self._mujoco_include_path,
@@ -163,23 +189,186 @@ class BuildCMakeExtension(build_ext.build_ext):
     if self._is_apple:
       self._copy_mjpython()
 
-  def _find_mujoco(self):
-    if MUJOCO_PATH not in os.environ:
-      raise RuntimeError(f'{MUJOCO_PATH} environment variable is not set')
-    if MUJOCO_PLUGIN_PATH not in os.environ:
+  def _prepare_source(self):
+    source = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mujoco')
+    root = os.path.dirname(os.path.dirname(source))
+    root_files = (
+      'CMakeLists.txt',
+      'include/mujoco/mujoco.h',
+      'cmake/MujocoOptions.cmake',
+      'simulate/CMakeLists.txt',
+      'plugin/sdf/CMakeLists.txt',
+    )
+    self._repo_root = (
+      root
+      if all(os.path.isfile(os.path.join(root, name)) for name in root_files)
+      else None
+    )
+    prepared_files = (
+      'enum_traits.h',
+      'function_traits.h',
+      'specs.cc.inc',
+      'cmake/MujocoOptions.cmake',
+      'simulate/CMakeLists.txt',
+    )
+    if all(
+      os.path.isfile(os.path.join(source, name)) for name in prepared_files
+    ):
+      return source
+    if not self._repo_root:
       raise RuntimeError(
-          f'{MUJOCO_PLUGIN_PATH} environment variable is not set'
+        'Python binding source is incomplete: use a full MuJoCo checkout '
+        'or a prepared release sdist with MUJOCO_PATH and MUJOCO_PLUGIN_PATH'
       )
+
+    staged = os.path.join(os.path.abspath(self.build_temp), 'source', 'mujoco')
+    shutil.copytree(source, staged, dirs_exist_ok=True)
+    shutil.copytree(
+      os.path.join(root, 'cmake'),
+      os.path.join(staged, 'cmake'),
+      dirs_exist_ok=True,
+    )
+    shutil.copytree(
+      os.path.join(root, 'simulate'),
+      os.path.join(staged, 'simulate'),
+      dirs_exist_ok=True,
+    )
+    env = os.environ.copy()
+    env['PYTHONPATH'] = os.pathsep.join(
+      filter(None, (staged, env.get('PYTHONPATH')))
+    )
+    for script, output in (
+      ('generate_enum_traits.py', 'enum_traits.h'),
+      ('generate_function_traits.py', 'function_traits.h'),
+      ('generate_spec_bindings.py', 'specs.cc.inc'),
+    ):
+      with open(
+        os.path.join(staged, output), 'w', encoding='utf-8'
+      ) as generated:
+        subprocess.check_call(
+          [sys.executable, os.path.join(staged, 'codegen', script)],
+          stdout=generated,
+          env=env,
+        )
+    return staged
+
+  def _build_parallel_args(self):
+    if os.environ.get('CMAKE_BUILD_PARALLEL_LEVEL'):
+      return []
+    return ['--parallel', str(min(os.cpu_count() or 1, 4))]
+
+  def _build_mujoco(self):
+    cmake = os.environ.get(MUJOCO_CMAKE, 'cmake')
+    build_cfg = 'Debug' if self.debug else 'Release'
+    native_build = os.path.join(os.path.abspath(self.build_temp), 'native')
+    self._sdk_root = os.path.join(os.path.abspath(self.build_temp), 'sdk')
+    cmake_args = [
+      '-S',
+      self._repo_root,
+      '-B',
+      native_build,
+      f'-DCMAKE_BUILD_TYPE:STRING={build_cfg}',
+      f'-DCMAKE_INSTALL_PREFIX:PATH={self._sdk_root}',
+      '-DCMAKE_INTERPROCEDURAL_OPTIMIZATION:BOOL=OFF',
+      '-DBUILD_TESTING:BOOL=OFF',
+      '-DMUJOCO_BUILD_EXAMPLES:BOOL=OFF',
+      '-DMUJOCO_BUILD_SIMULATE:BOOL=OFF',
+      '-DMUJOCO_BUILD_TESTS:BOOL=OFF',
+      '-DMUJOCO_TEST_PYTHON_UTIL:BOOL=OFF',
+      '-DMUJOCO_BUILD_STUDIO:BOOL=OFF',
+      '-DMUJOCO_USE_FILAMENT:BOOL=OFF',
+      '-DMUJOCO_WITH_USD:BOOL=OFF',
+      '-DMUJOCO_BUILD_MACOS_FRAMEWORKS:BOOL=OFF',
+    ]
+    if platform.system() != 'Windows':
+      origin = '@loader_path' if self._is_apple else '$ORIGIN'
+      cmake_args.extend(
+        [
+          '-DCMAKE_BUILD_WITH_INSTALL_RPATH:BOOL=ON',
+          f'-DCMAKE_INSTALL_RPATH:STRING={origin};{origin}/..',
+        ]
+      )
+    cmake_args.extend(get_macos_arch_args())
+    cmake_args.extend(parse_cmake_args_from_environ())
+    if platform.system() == 'Windows':
+      cmake_args = [arg.replace('\\', '/') for arg in cmake_args]
+    subprocess.check_call([cmake, *cmake_args])
+    subprocess.check_call(
+      [
+        cmake,
+        '--build',
+        native_build,
+        '--config',
+        build_cfg,
+        '--target',
+        'mujoco',
+        'actuator',
+        'elasticity',
+        'sensor',
+        'sdf_plugin',
+        *self._build_parallel_args(),
+      ]
+    )
+    for component in ('runtime', 'dev'):
+      subprocess.check_call(
+        [
+          cmake,
+          '--install',
+          native_build,
+          '--prefix',
+          self._sdk_root,
+          '--config',
+          build_cfg,
+          '--component',
+          component,
+        ]
+      )
+
+    system = platform.system()
+    lib_dir = os.path.join(
+      native_build, 'bin' if system == 'Windows' else 'lib'
+    )
+    if os.path.isdir(os.path.join(lib_dir, build_cfg)):
+      lib_dir = os.path.join(lib_dir, build_cfg)
+    suffix = (
+      '.dll' if system == 'Windows' else '.dylib' if self._is_apple else '.so'
+    )
+    plugin_dir = os.path.join(self._sdk_root, 'mujoco_plugin')
+    os.makedirs(plugin_dir, exist_ok=True)
+    for plugin in ('actuator', 'elasticity', 'sensor', 'sdf_plugin'):
+      filename = ('' if system == 'Windows' else 'lib') + plugin + suffix
+      src = os.path.join(lib_dir, filename)
+      if not os.path.isfile(src):
+        raise RuntimeError(f'Native MuJoCo plugin not built: {src}')
+      shutil.copyfile(src, os.path.join(plugin_dir, filename))
+
+  def _find_mujoco(self):
+    if MUJOCO_PATH in os.environ or MUJOCO_PLUGIN_PATH in os.environ:
+      if not (
+        os.environ.get(MUJOCO_PATH) and os.environ.get(MUJOCO_PLUGIN_PATH)
+      ):
+        raise RuntimeError(
+          'Set both MUJOCO_PATH and MUJOCO_PLUGIN_PATH to nonempty SDK paths'
+        )
+      self._sdk_root = os.environ[MUJOCO_PATH]
+      plugin_path = os.environ[MUJOCO_PLUGIN_PATH]
+    else:
+      if not self._repo_root:
+        raise RuntimeError(
+          'A prepared sdist requires MUJOCO_PATH and MUJOCO_PLUGIN_PATH; '
+          'build from a full MuJoCo checkout for an automatic engine build'
+        )
+      self._build_mujoco()
+      plugin_path = os.path.join(self._sdk_root, 'mujoco_plugin')
     library_path = None
     include_path = None
-    plugin_path = os.environ[MUJOCO_PLUGIN_PATH]
-    for directory, subdirs, filenames in os.walk(os.environ[MUJOCO_PATH]):
+    for directory, subdirs, filenames in os.walk(self._sdk_root):
       if self._is_apple and 'mujoco.framework' in subdirs:
         return (
-            os.path.join(directory, 'mujoco.framework/Versions/A'),
-            os.path.join(directory, 'mujoco.framework/Headers'),
-            plugin_path,
-            directory,
+          os.path.join(directory, 'mujoco.framework/Versions/A'),
+          os.path.join(directory, 'mujoco.framework/Headers'),
+          plugin_path,
+          directory,
         )
       if fnmatch.filter(filenames, get_mujoco_lib_pattern()):
         library_path = directory
@@ -191,7 +380,7 @@ class BuildCMakeExtension(build_ext.build_ext):
 
   def _copy_external_libraries(self):
     dst = os.path.dirname(self.get_ext_fullpath(self.extensions[0].name))
-    for directory, _, filenames in os.walk(os.environ[MUJOCO_PATH]):
+    for directory, _, filenames in os.walk(self._sdk_root):
       for pattern in get_external_lib_patterns():
         for filename in fnmatch.filter(filenames, pattern):
           shutil.copyfile(
@@ -249,7 +438,7 @@ class BuildCMakeExtension(build_ext.build_ext):
 
   def _copy_studio_assets(self):
     assets_src = None
-    for directory, subdirs, _ in os.walk(os.environ[MUJOCO_PATH]):
+    for directory, subdirs, _ in os.walk(self._sdk_root):
       if 'assets' in subdirs:
         candidate = os.path.join(directory, 'assets')
         if os.path.exists(os.path.join(candidate, 'fontawesome-webfont.ttf')):
@@ -265,7 +454,7 @@ class BuildCMakeExtension(build_ext.build_ext):
         shutil.rmtree(dst)
       shutil.copytree(assets_src, dst)
     else:
-      print("Warning: Studio assets not found in MUJOCO_PATH. Skipping.")
+      print("Warning: Studio assets not found in MuJoCo SDK. Skipping.")
 
   def _copy_mjpython(self):
     src_dir = os.path.join(os.path.dirname(__file__), 'mujoco/mjpython')
@@ -281,10 +470,12 @@ class BuildCMakeExtension(build_ext.build_ext):
 
     dst_bin_dir = os.path.join(dst_contents_dir, 'MacOS')
     os.makedirs(dst_bin_dir, exist_ok=True)
-    shutil.copyfile(
-        os.path.join(self.build_temp, 'mjpython'),
-        os.path.join(dst_bin_dir, 'mjpython'),
-    )
+    mjpython = os.path.join(self.build_temp, 'mjpython')
+    if not os.path.isfile(mjpython):
+      mjpython = os.path.join(
+        self.build_temp, 'Debug' if self.debug else 'Release', 'mjpython'
+      )
+    shutil.copyfile(mjpython, os.path.join(dst_bin_dir, 'mjpython'))
     os.chmod(os.path.join(dst_bin_dir, 'mjpython'), 0o755)
 
     dst_resources_dir = os.path.join(dst_contents_dir, 'Resources')
@@ -298,15 +489,13 @@ class BuildCMakeExtension(build_ext.build_ext):
     """Check for CMake."""
     cmake = os.environ.get(MUJOCO_CMAKE, 'cmake')
     build_cfg = 'Debug' if self.debug else 'Release'
-    cmake_module_path = os.path.join(
-        os.path.dirname(__file__), 'mujoco', 'cmake'
-    )
+    cmake_module_path = os.path.join(self._binding_source, 'cmake')
     cmake_args = [
         f'-DPython3_ROOT_DIR:PATH={sys.prefix}',
         f'-DPython3_EXECUTABLE:STRING={sys.executable}',
         f'-DCMAKE_MODULE_PATH:PATH={cmake_module_path}',
         f'-DCMAKE_BUILD_TYPE:STRING={build_cfg}',
-        f'-DCMAKE_LIBRARY_OUTPUT_DIRECTORY:PATH={self.build_temp}',
+        f'-DCMAKE_LIBRARY_OUTPUT_DIRECTORY:PATH={os.path.abspath(self.build_temp)}',
         (
             f'-DCMAKE_INTERPROCEDURAL_OPTIMIZATION:BOOL={"OFF" if self.debug else "ON"}'
         ),
@@ -329,13 +518,7 @@ class BuildCMakeExtension(build_ext.build_ext):
           f'-DPython3_LIBRARY={sysconfig.get_paths()["stdlib"]}',
           f'-DPython3_INCLUDE_DIR={sysconfig.get_paths()["include"]}',
       ])
-    if platform.system() == 'Darwin' and os.environ.get('ARCHFLAGS'):
-      osx_archs = []
-      if '-arch x86_64' in os.environ['ARCHFLAGS']:
-        osx_archs.append('x86_64')
-      if '-arch arm64' in os.environ['ARCHFLAGS']:
-        osx_archs.append('arm64')
-      cmake_args.append(f'-DCMAKE_OSX_ARCHITECTURES={";".join(osx_archs)}')
+    cmake_args.extend(get_macos_arch_args())
 
     cmake_args.extend(parse_cmake_args_from_environ())
     os.makedirs(self.build_temp, exist_ok=True)
@@ -349,13 +532,13 @@ class BuildCMakeExtension(build_ext.build_ext):
     subprocess.check_call(
         [cmake]
         + cmake_args
-        + [os.path.join(os.path.dirname(__file__), 'mujoco')],
+        + [self._binding_source],
         cwd=self.build_temp,
     )
 
     print('Building all extensions with CMake')
     subprocess.check_call(
-        [cmake, '--build', '.', f'-j{os.cpu_count()}', '--config', build_cfg],
+        [cmake, '--build', '.', *self._build_parallel_args(), '--config', build_cfg],
         cwd=self.build_temp,
     )
 
@@ -370,10 +553,19 @@ class BuildCMakeExtension(build_ext.build_ext):
     rel_dir = os.path.dirname(rel_path)
 
     build_path = os.path.join(self.build_temp, rel_dir, filename)
-    if os.path.exists(build_path):
+    if not os.path.isfile(build_path):
+      build_path = os.path.join(
+        self.build_temp,
+        rel_dir,
+        'Debug' if self.debug else 'Release',
+        filename,
+      )
+    if os.path.isfile(build_path):
       shutil.copyfile(build_path, dest_path)
+    elif ext.name in REQUIRED_EXTENSIONS:
+      raise RuntimeError(f'Required MuJoCo extension not built: {ext.name}')
     else:
-      print(f"Warning: Extension {ext.name} was not built by CMake. Skipping.")
+      print(f'Warning: Extension {ext.name} was not built by CMake. Skipping.')
 
 
 class InstallScripts(install_scripts.install_scripts):

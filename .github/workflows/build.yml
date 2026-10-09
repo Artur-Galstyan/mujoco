@@ -60,6 +60,36 @@ jobs:
         GITHUB_EVENT_NAME: ${{ github.event_name }}
       run: bash ./.github/workflows/build_steps.sh generate_matrix
 
+  python-source-install:
+    name: "macos-15-python-3.13-source-install"
+    runs-on: macos-15
+    steps:
+    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      with:
+        persist-credentials: false
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      with:
+        python-version: "3.13"
+    - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+    - name: Install from full checkout without SDK
+      run: |
+        test -z "${MUJOCO_PATH+x}" && test -z "${MUJOCO_PLUGIN_PATH+x}"
+        python -m venv .venv
+        source .venv/bin/activate
+        uv pip install ./python
+    - name: Check source build and installed wheel
+      env:
+        MUJOCO_GL: disable
+      run: |
+        source .venv/bin/activate
+        uv pip install --group python/pyproject.toml:typing setuptools
+        test -f python/tests/test_setup.py
+        python -m unittest discover -s python/tests -p 'test_setup.py'
+        python -m ruff check --config python/pyproject.toml python/tests/test_setup.py
+        python -m ruff format --check --config python/pyproject.toml python/tests/test_setup.py
+        python python/tests/typing/check.py
+        python -m unittest mujoco.bindings_test.MuJoCoBindingsTest.test_load_plugin
+
   mujoco:
     needs: setup
     strategy:

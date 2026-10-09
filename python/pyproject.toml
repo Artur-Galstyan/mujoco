@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools"]
+requires = ["setuptools", "cmake>=3.26,<4", "absl-py"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -96,7 +96,7 @@ typing = [
 ]
 
 [tool.ruff]
-include = ["*.pyi", "mujoco/codegen/generate_stubs.py", "tests/typing/*.py"]
+include = ["*.pyi", "mujoco/codegen/generate_stubs.py", "tests/typing/*.py", "tests/test_setup.py"]
 indent-width = 2
 line-length = 80
 

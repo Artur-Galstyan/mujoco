@@ -34,15 +34,32 @@ pip install mujoco
 A copy of the MuJoCo library is provided as part of the package and does **not**
 need to be downloaded or installed separately.
 
-### Source
+### Install from Git
 
-**IMPORTANT:** Building from source is only necessary if you are modifying the
-Python bindings (or are trying to run on exceptionally old Linux systems).
-If that's not the case, then we recommend installing the prebuilt binaries from
-PyPI.
+To build this fork from source on Python 3.13, run:
 
-If you need to build the Python bindings from source, please consult
-[the documentation](https://mujoco.readthedocs.io/en/latest/python.html#building-from-source).
+```sh
+uv pip install 'mujoco @ git+https://github.com/Artur-Galstyan/mujoco.git#subdirectory=python'
+```
+
+The build compiles the MuJoCo engine and its four bundled plugins from the
+same full checkout, then builds the classic Python bindings. You do not need a
+separate MuJoCo SDK or `MUJOCO_PATH` / `MUJOCO_PLUGIN_PATH`. You do need a C++
+compiler, Git, and network access for pinned CMake dependencies. Build isolation
+installs CMake and Python build dependencies, including `absl-py`. The first
+build can take several minutes. Optional Studio and Filament are not part of
+this source build.
+
+For a local full checkout, run `uv pip install ./python` from the repository
+root. The repository root itself is not an installable Python project.
+
+### Source archives and external SDKs
+
+A standalone Python source archive does not include the full engine checkout.
+To build from such an archive, or to use an existing MuJoCo release instead,
+set `MUJOCO_PATH` to the matching SDK and `MUJOCO_PLUGIN_PATH` to its built
+plugins. See the [source build documentation](https://mujoco.readthedocs.io/en/latest/python.html#building-from-source)
+for details. The Git and local full-checkout commands above need neither path.
 
 ## Type hints
 
@@ -75,10 +92,9 @@ python python/tests/typing/check.py
 
 Review the generated stubs before committing them. The generator and typing
 tests are developer tools in the repository, not part of the sdist or wheel.
-Wheel builds package the checked-in stubs without regenerating them. A source
-install such as `uv pip install ./python` still needs a native MuJoCo SDK,
-CMake, `MUJOCO_PATH`, and `MUJOCO_PLUGIN_PATH`. The repository root is not an
-installable Python project.
+Wheel builds package the checked-in stubs without regenerating them. A Git or
+local full-checkout source install builds its own engine; a standalone Python
+source archive still needs a matching external SDK.
 
 ## Usage
 
