@@ -252,6 +252,13 @@ jobs:
         TMPDIR: ${{ matrix.tmpdir }}
       run: bash ../../.github/workflows/build_steps.sh install_python_bindings
 
+    - name: Check installed wheel types
+      if: ${{ matrix.label == 'ubuntu-22.04-gcc-12' }}
+      shell: bash
+      env:
+        TMPDIR: ${{ matrix.tmpdir }}
+      run: bash ./.github/workflows/build_steps.sh check_python_typing
+
     - name: Test Python bindings
       if: ${{ runner.os != 'Windows' || contains(matrix.label, 'clang') }}
       shell: bash

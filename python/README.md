@@ -44,6 +44,42 @@ PyPI.
 If you need to build the Python bindings from source, please consult
 [the documentation](https://mujoco.readthedocs.io/en/latest/python.html#building-from-source).
 
+## Type hints
+
+Wheels built from this checkout bundle `.pyi` files for ten core native
+modules and public Python wrappers, plus `py.typed`. From the repository root,
+install a matching built wheel in an active virtual environment (use one wheel
+file if `python/dist` contains several):
+
+```sh
+uv pip install python/dist/mujoco-3.15.1-*.whl
+```
+
+The installed wheel needs no separate stub package or `stubPath` setting.
+Existing PyPI releases do not yet include these changes. The root `py.typed`
+marker does not mean every optional module is fully typed: Studio and Filament
+native extensions have no new stubs, and the separate `mujoco-mjx` distribution
+is outside this work. The hints do not specify exact NumPy array shapes or the
+compile-time precision of `mjtNum`; `MJTNUM_DTYPE` depends on the build.
+
+To regenerate the native stubs, use Python 3.11 or newer (`tomllib` is required)
+and a matching double-precision MuJoCo 3.15.1 wheel built from this checkout.
+From the repository root, with that wheel installed in the active virtual
+environment, run:
+
+```sh
+uv pip install --group python/pyproject.toml:typing
+python python/mujoco/codegen/generate_stubs.py --output python/mujoco
+python python/tests/typing/check.py
+```
+
+Review the generated stubs before committing them. The generator and typing
+tests are developer tools in the repository, not part of the sdist or wheel.
+Wheel builds package the checked-in stubs without regenerating them. A source
+install such as `uv pip install ./python` still needs a native MuJoCo SDK,
+CMake, `MUJOCO_PATH`, and `MUJOCO_PLUGIN_PATH`. The repository root is not an
+installable Python project.
+
 ## Usage
 
 Once installed, the package can be imported via `import mujoco`. Please consult

@@ -360,6 +360,15 @@ install_python_bindings() {
 }
 
 
+check_python_typing() {
+    echo "Checking installed Python wheel types..."
+    source ${TMPDIR}/venv/bin/activate
+    python -m pip install --group python/pyproject.toml:typing
+    python -m ruff format --check --config python/pyproject.toml python/mujoco python/tests/typing
+    python python/tests/typing/check.py
+}
+
+
 test_python_bindings() {
     echo "Testing Python bindings..."
     source ${TMPDIR}/venv/bin/activate &&

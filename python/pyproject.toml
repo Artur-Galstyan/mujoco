@@ -31,6 +31,7 @@ dependencies = [
     "glfw",
     "numpy",
     "pyopengl",
+    "typing-extensions",
     "websockets>=13",
 ]
 dynamic = ["readme", "scripts"]
@@ -52,6 +53,7 @@ exclude = [
 ]
 
 [tool.setuptools.package-data]
+"*" = ["*.pyi", "py.typed"]
 mujoco = [
     "libmujoco.*.dylib",
     "libmujoco*.so.*",
@@ -85,6 +87,27 @@ usd = [
     "usd-core",
     "pillow"
 ]
+
+[dependency-groups]
+typing = [
+    "pybind11-stubgen==3.0.0",
+    "ruff==0.17.0",
+    "ty==0.0.85",
+]
+
+[tool.ruff]
+include = ["*.pyi", "mujoco/codegen/generate_stubs.py", "tests/typing/*.py"]
+indent-width = 2
+line-length = 80
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "PYI"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["mujoco"]
+
+[tool.ruff.format]
+quote-style = "single"
 
 [tool.isort]
 force_single_line = true
