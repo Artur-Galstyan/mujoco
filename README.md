@@ -93,6 +93,14 @@ be installed from [PyPI] via:
 pip install mujoco
 ```
 
+To install the typed Python bindings from this fork, you need Git, a C++
+compiler, and network access for pinned CMake dependencies. The first build
+can take several minutes. See the [Python installation guide](python/README.md#install-from-git).
+
+```sh
+uv pip install 'mujoco @ git+https://github.com/Artur-Galstyan/mujoco.git'
+```
+
 Note that Pre-built Linux wheels target `manylinux2014`, see
 [here](https://github.com/pypa/manylinux) for compatible distributions. For more
 information such as building the bindings from source, see the [Python bindings]

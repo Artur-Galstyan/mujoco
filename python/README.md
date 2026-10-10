@@ -39,7 +39,7 @@ need to be downloaded or installed separately.
 To build this fork from source on Python 3.13, run:
 
 ```sh
-uv pip install 'mujoco @ git+https://github.com/Artur-Galstyan/mujoco.git#subdirectory=python'
+uv pip install 'mujoco @ git+https://github.com/Artur-Galstyan/mujoco.git'
 ```
 
 The build compiles the MuJoCo engine and its four bundled plugins from the
@@ -50,8 +50,8 @@ installs CMake and Python build dependencies, including `absl-py`. The first
 build can take several minutes. Optional Studio and Filament are not part of
 this source build.
 
-For a local full checkout, run `uv pip install ./python` from the repository
-root. The repository root itself is not an installable Python project.
+For a local full checkout, run `uv pip install .` from the repository root
+(`uv pip install ./python` still works).
 
 ### Source archives and external SDKs
 

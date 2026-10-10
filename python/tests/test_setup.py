@@ -24,6 +24,7 @@ from pathlib import Path
 from unittest import mock
 
 import setuptools
+import tomllib
 
 PYTHON = Path(__file__).resolve().parents[1]
 CORE = (
@@ -39,6 +40,58 @@ CORE = (
   '_structs',
 )
 PLUGINS = ('actuator', 'elasticity', 'sensor', 'sdf_plugin')
+
+
+class RepositoryInstallTest(unittest.TestCase):
+  def test_root_build_requirements_match_python_package(self):
+    root = tomllib.loads((PYTHON.parent / 'pyproject.toml').read_text())
+    child = tomllib.loads((PYTHON / 'pyproject.toml').read_text())
+    self.assertEqual(root['build-system'], child['build-system'])
+
+  def test_root_uses_child_setup_and_restores_working_directory(self):
+    calls = []
+    with tempfile.TemporaryDirectory() as temp:
+      previous = Path.cwd()
+      try:
+        os.chdir(temp)
+        with mock.patch.object(
+          setuptools,
+          'setup',
+          side_effect=lambda **kwargs: calls.append(
+            (Path.cwd(), Path(sys.argv[0]))
+          ),
+        ) as setup:
+          runpy.run_path(str(PYTHON.parent / 'setup.py'))
+        self.assertEqual(Path.cwd(), Path(temp))
+      finally:
+        os.chdir(previous)
+    setup.assert_called_once()
+    self.assertEqual(calls, [(PYTHON, PYTHON / 'setup.py')])
+    self.assertEqual(
+      setup.call_args.kwargs['cmdclass'][
+        'build_ext'
+      ]._prepare_source.__globals__['__file__'],
+      str(PYTHON / 'setup.py'),
+    )
+    self.assertTrue(
+      setup.call_args.kwargs['long_description'].startswith(
+        (PYTHON / 'README.md').read_text()
+      )
+    )
+
+  def test_root_restores_working_directory_when_setup_fails(self):
+    with tempfile.TemporaryDirectory() as temp:
+      previous = Path.cwd()
+      try:
+        os.chdir(temp)
+        with mock.patch.object(
+          setuptools, 'setup', side_effect=RuntimeError('failed')
+        ):
+          with self.assertRaisesRegex(RuntimeError, 'failed'):
+            runpy.run_path(str(PYTHON.parent / 'setup.py'))
+        self.assertEqual(Path.cwd(), Path(temp))
+      finally:
+        os.chdir(previous)
 
 
 class SourceBuildTest(unittest.TestCase):

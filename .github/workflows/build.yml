@@ -76,7 +76,7 @@ jobs:
         test -z "${MUJOCO_PATH+x}" && test -z "${MUJOCO_PLUGIN_PATH+x}"
         python -m venv .venv
         source .venv/bin/activate
-        uv pip install ./python
+        uv pip install .
     - name: Check source build and installed wheel
       env:
         MUJOCO_GL: disable
@@ -85,8 +85,8 @@ jobs:
         uv pip install --group python/pyproject.toml:typing setuptools
         test -f python/tests/test_setup.py
         python -m unittest discover -s python/tests -p 'test_setup.py'
-        python -m ruff check --config python/pyproject.toml python/tests/test_setup.py
-        python -m ruff format --check --config python/pyproject.toml python/tests/test_setup.py
+        python -m ruff check --config python/pyproject.toml python/tests/test_setup.py setup.py
+        python -m ruff format --check --config python/pyproject.toml python/tests/test_setup.py setup.py
         python python/tests/typing/check.py
         python -m unittest mujoco.bindings_test.MuJoCoBindingsTest.test_load_plugin
 
