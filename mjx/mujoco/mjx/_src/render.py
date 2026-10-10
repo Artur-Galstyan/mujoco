@@ -14,10 +14,9 @@
 # ==============================================================================
 """Render helpers for MJX."""
 
-from typing import Any
-
 import jax
 import mujoco.mjx.warp as mjxw
+from mujoco.mjx.warp.render_context import RenderContextPytree
 
 # pylint: disable=g-importing-member
 from mujoco.mjx._src.types import Data
@@ -39,7 +38,7 @@ def _require_segmentation_enabled(warp_rc) -> None:
 def _call_render(
     m: Model,
     d: Data,
-    ctx: Any,
+    ctx: RenderContextPytree,
     require_seg: bool = False,
 ) -> tuple[jax.Array, jax.Array, jax.Array, Data]:
   if m.impl == Impl.WARP and d.impl == Impl.WARP and mjxw.WARP_INSTALLED:
@@ -59,7 +58,9 @@ def _call_render(
   raise NotImplementedError('render only implemented for MuJoCo Warp.')
 
 
-def render(m: Model, d: Data, ctx: Any) -> tuple[jax.Array, jax.Array, Data]:
+def render(
+    m: Model, d: Data, ctx: RenderContextPytree
+) -> tuple[jax.Array, jax.Array, Data]:
   """Render packed RGB and depth buffers.
 
   Returns:
@@ -71,7 +72,7 @@ def render(m: Model, d: Data, ctx: Any) -> tuple[jax.Array, jax.Array, Data]:
 
 
 def render_with_segmentation(
-    m: Model, d: Data, ctx: Any
+    m: Model, d: Data, ctx: RenderContextPytree
 ) -> tuple[jax.Array, jax.Array, jax.Array, Data]:
   """Render and return RGB, depth, and packed segmentation outputs.
 

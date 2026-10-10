@@ -89,6 +89,16 @@ jobs:
         python -m ruff format --check --config python/pyproject.toml python/tests/test_setup.py setup.py
         python python/tests/typing/check.py
         python -m unittest mujoco.bindings_test.MuJoCoBindingsTest.test_load_plugin
+    - name: Check installed MJX types
+      env:
+        MUJOCO_GL: disable
+      run: |
+        source .venv/bin/activate
+        uv pip install ./mjx
+        python -I mjx/tests/typing/check.py
+        python -I mjx/tests/typing/runtime_smoke.py
+        python -m ruff check --config python/pyproject.toml mjx/tests/typing/*.py
+        python -m ruff format --check --config python/pyproject.toml mjx/tests/typing/*.py
 
   mujoco:
     needs: setup

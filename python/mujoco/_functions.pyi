@@ -308,22 +308,38 @@ def _realloc_island(
   nisland: typing.SupportsInt | typing.SupportsIndex,
   nidof: typing.SupportsInt | typing.SupportsIndex,
 ) -> None: ...
-def mj_Euler(m: mujoco._structs.MjModel, d: mujoco._structs.MjData) -> None: ...
+def mj_Euler(m: mujoco._structs.MjModel, d: mujoco._structs.MjData) -> None:
+  """
+  Euler integrator, semi-implicit in velocity.
+  """
+
 def mj_RungeKutta(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
   N: typing.SupportsInt | typing.SupportsIndex,
-) -> None: ...
+) -> None:
+  """
+  Runge-Kutta explicit order-N integrator.
+  """
+
 def mj_actuatorInputName(
   m: mujoco._structs.MjModel,
   id: typing.SupportsInt | typing.SupportsIndex,
   input: typing.SupportsInt | typing.SupportsIndex,
-) -> str: ...
+) -> str:
+  """
+  Get name of actuator input, determined by the actuator type and input signature; return NULL if the actuator type defines no input names.
+  """
+
 def mj_addContact(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
   con: mujoco._structs.MjContact,
-) -> int: ...
+) -> int:
+  """
+  Add contact to d->contact list; return 0 if success; 1 if buffer full.
+  """
+
 def mj_addM(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
@@ -338,14 +354,22 @@ def mj_addM(
   colind: typing.Annotated[
     numpy.typing.NDArray[numpy.int32], '[m, 1]', 'flags.writeable'
   ],
-) -> None: ...
+) -> None:
+  """
+  Add inertia matrix to destination matrix (lower triangle only). Destination can be sparse or dense when all int* are NULL.
+  """
+
 def mj_angmomMat(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
   mat: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   body: typing.SupportsInt | typing.SupportsIndex,
-) -> None: ...
+) -> None:
+  """
+  Compute subtree angular momentum matrix.
+  """
+
 def mj_applyFT(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
@@ -355,32 +379,58 @@ def mj_applyFT(
   body: typing.SupportsInt | typing.SupportsIndex,
   qfrc_target: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
-) -> None: ...
-def mj_camlight(
-  m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
-def mj_checkAcc(
-  m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
-def mj_checkPos(
-  m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
-def mj_checkVel(
-  m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
-def mj_clearCache(cache: typing_extensions.CapsuleType) -> None: ...
-def mj_collision(
-  m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
-def mj_comPos(
-  m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
-def mj_comVel(
-  m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
+) -> None:
+  """
+  Apply Cartesian force and torque (outside xfrc_applied mechanism).
+  """
+
+def mj_camlight(m: mujoco._structs.MjModel, d: mujoco._structs.MjData) -> None:
+  """
+  Compute camera and light positions and orientations.
+  """
+
+def mj_checkAcc(m: mujoco._structs.MjModel, d: mujoco._structs.MjData) -> None:
+  """
+  Check qacc, reset if any element is too big or nan.
+  """
+
+def mj_checkPos(m: mujoco._structs.MjModel, d: mujoco._structs.MjData) -> None:
+  """
+  Check qpos, reset if any element is too big or nan.
+  """
+
+def mj_checkVel(m: mujoco._structs.MjModel, d: mujoco._structs.MjData) -> None:
+  """
+  Check qvel, reset if any element is too big or nan.
+  """
+
+def mj_clearCache(cache: typing_extensions.CapsuleType) -> None:
+  """
+  Clear the asset cache.
+  """
+
+def mj_collision(m: mujoco._structs.MjModel, d: mujoco._structs.MjData) -> None:
+  """
+  Run collision detection.
+  """
+
+def mj_comPos(m: mujoco._structs.MjModel, d: mujoco._structs.MjData) -> None:
+  """
+  Map inertias and motion dofs to global frame centered at CoM.
+  """
+
+def mj_comVel(m: mujoco._structs.MjModel, d: mujoco._structs.MjData) -> None:
+  """
+  Compute cvel, cdof_dot.
+  """
+
 def mj_compareFwdInv(
   m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
+) -> None:
+  """
+  Compare forward and inverse dynamics, save results in fwdinv.
+  """
+
 def mj_constraintUpdate(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
@@ -389,33 +439,69 @@ def mj_constraintUpdate(
   | numpy.typing.NDArray[numpy.float64]
   | None,
   flg_coneHessian: typing.SupportsInt | typing.SupportsIndex,
-) -> None: ...
+) -> None:
+  """
+  Compute efc_state, efc_force, qfrc_constraint, and (optionally) cone Hessians. If cost is not NULL, set *cost = s(jar) where jar = Jac*qacc-aref.
+  """
+
 def mj_contactForce(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
   id: typing.SupportsInt | typing.SupportsIndex,
   result: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
-) -> None: ...
+) -> None:
+  """
+  Extract 6D force:torque given contact id, in the contact frame.
+  """
+
 def mj_copyData(
   dest: mujoco._structs.MjData,
   m: mujoco._structs.MjModel,
   src: mujoco._structs.MjData,
-) -> None: ...
+) -> None:
+  """
+  Copy mjData. m is only required to contain the size fields from MJMODEL_INTS.
+  """
+
 def mj_copyState(
   m: mujoco._structs.MjModel,
   src: mujoco._structs.MjData,
   dst: mujoco._structs.MjData,
   sig: typing.SupportsInt | typing.SupportsIndex,
-) -> None: ...
-def mj_crb(m: mujoco._structs.MjModel, d: mujoco._structs.MjData) -> None: ...
-def mj_defaultLROpt(opt: mujoco._structs.MjLROpt) -> None: ...
-def mj_defaultOption(opt: mujoco._structs.MjOption) -> None: ...
+) -> None:
+  """
+  Copy state from src to dst.
+  """
+
+def mj_crb(m: mujoco._structs.MjModel, d: mujoco._structs.MjData) -> None:
+  """
+  Run composite rigid body inertia algorithm (CRB).
+  """
+
+def mj_defaultLROpt(opt: mujoco._structs.MjLROpt) -> None:
+  """
+  Set default options for length range computation.
+  """
+
+def mj_defaultOption(opt: mujoco._structs.MjOption) -> None:
+  """
+  Set physics options to default values.
+  """
+
 def mj_defaultSolRefImp(
   solref: typing.SupportsFloat | typing.SupportsIndex,
   solimp: typing.SupportsFloat | typing.SupportsIndex,
-) -> None: ...
-def mj_defaultVisual(vis: mujoco._structs.MjVisual) -> None: ...
+) -> None:
+  """
+  Set solver parameters to default values.
+  """
+
+def mj_defaultVisual(vis: mujoco._structs.MjVisual) -> None:
+  """
+  Set visual options to default values.
+  """
+
 def mj_differentiatePos(
   m: mujoco._structs.MjModel,
   qvel: numpy.typing.NDArray[numpy.float32]
@@ -423,13 +509,21 @@ def mj_differentiatePos(
   dt: typing.SupportsFloat | typing.SupportsIndex,
   qpos1: numpy.typing.ArrayLike,
   qpos2: numpy.typing.ArrayLike,
-) -> None: ...
-def mj_energyPos(
-  m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
-def mj_energyVel(
-  m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
+) -> None:
+  """
+  Compute velocity by finite-differencing two positions.
+  """
+
+def mj_energyPos(m: mujoco._structs.MjModel, d: mujoco._structs.MjData) -> None:
+  """
+  Evaluate position-dependent energy (potential).
+  """
+
+def mj_energyVel(m: mujoco._structs.MjModel, d: mujoco._structs.MjData) -> None:
+  """
+  Evaluate velocity-dependent energy (kinetic).
+  """
+
 def mj_extractState(
   m: mujoco._structs.MjModel,
   src: numpy.typing.ArrayLike,
@@ -437,44 +531,100 @@ def mj_extractState(
   dst: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   dstsig: typing.SupportsInt | typing.SupportsIndex,
-) -> None: ...
-def mj_factorM(
-  m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
-def mj_flex(m: mujoco._structs.MjModel, d: mujoco._structs.MjData) -> None: ...
-def mj_forward(
-  m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
+) -> None:
+  """
+  Extract a subset of components from a state previously obtained via mj_getState.
+  """
+
+def mj_factorM(m: mujoco._structs.MjModel, d: mujoco._structs.MjData) -> None:
+  """
+  Compute sparse L'*D*L factorizaton of inertia matrix.
+  """
+
+def mj_flex(m: mujoco._structs.MjModel, d: mujoco._structs.MjData) -> None:
+  """
+  Compute flex-related quantities.
+  """
+
+def mj_forward(m: mujoco._structs.MjModel, d: mujoco._structs.MjData) -> None:
+  """Forward dynamics: same as mj_step but do not integrate in time.
+
+  Refresh derived quantities after changing state, without advancing time.
+
+  >>> import mujoco
+  >>> model = mujoco.MjModel.from_xml_string(
+  ...     '<mujoco><worldbody><body name="link"><freejoint/>'
+  ...     '<geom size=".1" mass="1"/>'
+  ...     '</body></worldbody></mujoco>')
+  >>> data = mujoco.MjData(model)
+  >>> data.qpos[0] = 0.5
+  >>> mujoco.mj_forward(model, data)
+  >>> float(data.body('link').xpos[0])
+  0.5
+  """
+
 def mj_forwardSkip(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
   skipstage: typing.SupportsInt | typing.SupportsIndex,
   skipsensor: typing.SupportsInt | typing.SupportsIndex,
-) -> None: ...
+) -> None:
+  """
+  Forward dynamics with skip; skipstage is mjtStage.
+  """
+
 def mj_fullM(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
   dst: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
-) -> None: ...
+) -> None:
+  """
+  Convert sparse inertia matrix into full (i.e. dense) matrix.
+  """
+
 def mj_fwdAcceleration(
   m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
+) -> None:
+  """
+  Add up all non-constraint forces, compute qacc_smooth.
+  """
+
 def mj_fwdActuation(
   m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
+) -> None:
+  """
+  Compute actuator force qfrc_actuator.
+  """
+
 def mj_fwdConstraint(
   m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
+) -> None:
+  """
+  Run selected constraint solver.
+  """
+
 def mj_fwdKinematics(
   m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
+) -> None:
+  """
+  Run all kinematics-like computations (kinematics, comPos, camlight, flex, tendon).
+  """
+
 def mj_fwdPosition(
   m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
+) -> None:
+  """
+  Run position-dependent computations.
+  """
+
 def mj_fwdVelocity(
   m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
+) -> None:
+  """
+  Run velocity-dependent computations.
+  """
+
 def mj_geomDistance(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
@@ -484,33 +634,67 @@ def mj_geomDistance(
   fromto: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64]
   | None,
-) -> float: ...
-def mj_getCache() -> typing_extensions.CapsuleType: ...
-def mj_getCacheCapacity(cache: typing_extensions.CapsuleType) -> int: ...
-def mj_getCacheSize(cache: typing_extensions.CapsuleType) -> int: ...
+) -> float:
+  """
+  Return smallest signed distance between two geoms and optionally segment from geom1 to geom2.
+  """
+
+def mj_getCache() -> typing_extensions.CapsuleType:
+  """
+  Get the internal asset cache used by the compiler.
+  """
+
+def mj_getCacheCapacity(cache: typing_extensions.CapsuleType) -> int:
+  """
+  Get the capacity of the asset cache in bytes.
+  """
+
+def mj_getCacheSize(cache: typing_extensions.CapsuleType) -> int:
+  """
+  Get the current size of the asset cache in bytes.
+  """
+
 def mj_getState(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
   state: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   sig: typing.SupportsInt | typing.SupportsIndex,
-) -> None: ...
-def mj_getTotalmass(m: mujoco._structs.MjModel) -> float: ...
+) -> None:
+  """
+  Get state.
+  """
+
+def mj_getTotalmass(m: mujoco._structs.MjModel) -> float:
+  """
+  Sum all body masses.
+  """
+
 def mj_id2name(
   m: mujoco._structs.MjModel,
   type: typing.SupportsInt | typing.SupportsIndex,
   id: typing.SupportsInt | typing.SupportsIndex,
-) -> str | None: ...
-def mj_implicit(
-  m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
+) -> str | None:
+  """
+  Get name of object with the specified mjtObj type and id; return NULL if name not found.
+  """
+
+def mj_implicit(m: mujoco._structs.MjModel, d: mujoco._structs.MjData) -> None:
+  """
+  Implicit-in-velocity integrators.
+  """
+
 def mj_initCtrlHistory(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
   id: typing.SupportsInt | typing.SupportsIndex,
   times: numpy.typing.ArrayLike | None,
   values: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Initialize history buffer for actuator; if times is NULL, uses existing buffer timestamps.
+  """
+
 def mj_initSensorHistory(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
@@ -518,44 +702,88 @@ def mj_initSensorHistory(
   times: numpy.typing.ArrayLike | None,
   values: numpy.typing.ArrayLike,
   phase: typing.SupportsFloat | typing.SupportsIndex,
-) -> None: ...
+) -> None:
+  """
+  Initialize history buffer for sensor; if times is NULL, uses existing buffer timestamps. phase sets the user slot (last computation time for interval sensors).
+  """
+
 def mj_insideSite(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
   siteid: typing.SupportsInt | typing.SupportsIndex,
   point: numpy.typing.ArrayLike,
-) -> int: ...
+) -> int:
+  """
+  Return 1 if point is inside a site (convex hull for meshes), 0 otherwise.
+  """
+
 def mj_integratePos(
   m: mujoco._structs.MjModel,
   qpos: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   qvel: numpy.typing.ArrayLike,
   dt: typing.SupportsFloat | typing.SupportsIndex,
-) -> None: ...
+) -> None:
+  """
+  Integrate position with given velocity.
+  """
+
 def mj_invConstraint(
   m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
+) -> None:
+  """
+  Apply the analytical formula for inverse constraint dynamics.
+  """
+
 def mj_invPosition(
   m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
+) -> None:
+  """
+  Run position-dependent computations in inverse dynamics.
+  """
+
 def mj_invVelocity(
   m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
-def mj_inverse(
-  m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
+) -> None:
+  """
+  Run velocity-dependent computations in inverse dynamics.
+  """
+
+def mj_inverse(m: mujoco._structs.MjModel, d: mujoco._structs.MjData) -> None:
+  """
+  Inverse dynamics: qacc must be set before calling.
+  """
+
 def mj_inverseSkip(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
   skipstage: typing.SupportsInt | typing.SupportsIndex,
   skipsensor: typing.SupportsInt | typing.SupportsIndex,
-) -> None: ...
-def mj_isDual(m: mujoco._structs.MjModel) -> int: ...
-def mj_isPyramidal(m: mujoco._structs.MjModel) -> int: ...
-def mj_isSparse(m: mujoco._structs.MjModel) -> int: ...
-def mj_island(
-  m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
+) -> None:
+  """
+  Inverse dynamics with skip; skipstage is mjtStage.
+  """
+
+def mj_isDual(m: mujoco._structs.MjModel) -> int:
+  """
+  Determine type of solver (PGS is dual, CG and Newton are primal).
+  """
+
+def mj_isPyramidal(m: mujoco._structs.MjModel) -> int:
+  """
+  Determine type of friction cone.
+  """
+
+def mj_isSparse(m: mujoco._structs.MjModel) -> int:
+  """
+  Determine type of constraint Jacobian.
+  """
+
+def mj_island(m: mujoco._structs.MjModel, d: mujoco._structs.MjData) -> None:
+  """
+  Find constraint islands.
+  """
+
 def mj_jac(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
@@ -567,7 +795,28 @@ def mj_jac(
   | None,
   point: numpy.typing.ArrayLike,
   body: typing.SupportsInt | typing.SupportsIndex,
-) -> None: ...
+) -> None:
+  """Compute 3/6-by-nv end-effector Jacobian of global point attached to given body.
+
+  jacp and jacr are optional writable (3, nv) arrays in MJTNUM_DTYPE.
+
+  Call mj_forward before computing Jacobians for an updated position.
+
+  >>> import mujoco
+  >>> import numpy as np
+  >>> model = mujoco.MjModel.from_xml_string(
+  ...     '<mujoco><worldbody><body name="link"><freejoint/>'
+  ...     '<geom size=".1" mass="1"/>'
+  ...     '</body></worldbody></mujoco>')
+  >>> data = mujoco.MjData(model)
+  >>> mujoco.mj_forward(model, data)
+  >>> jacp = np.empty((3, model.nv), dtype=mujoco.MJTNUM_DTYPE)
+  >>> mujoco.mj_jac(model, data, jacp, None,
+  ...               data.body('link').xpos, model.body('link').id)
+  >>> float(jacp[0, 0])
+  1.0
+  """
+
 def mj_jacBody(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
@@ -578,7 +827,11 @@ def mj_jacBody(
   | numpy.typing.NDArray[numpy.float64]
   | None,
   body: typing.SupportsInt | typing.SupportsIndex,
-) -> None: ...
+) -> None:
+  """
+  Compute body frame end-effector Jacobian.
+  """
+
 def mj_jacBodyCom(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
@@ -589,7 +842,11 @@ def mj_jacBodyCom(
   | numpy.typing.NDArray[numpy.float64]
   | None,
   body: typing.SupportsInt | typing.SupportsIndex,
-) -> None: ...
+) -> None:
+  """
+  Compute body center-of-mass end-effector Jacobian.
+  """
+
 def mj_jacDot(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
@@ -601,7 +858,11 @@ def mj_jacDot(
   | None,
   point: numpy.typing.ArrayLike,
   body: typing.SupportsInt | typing.SupportsIndex,
-) -> None: ...
+) -> None:
+  """
+  Compute 3/6-by-nv Jacobian time derivative of global point attached to given body.
+  """
+
 def mj_jacGeom(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
@@ -612,7 +873,11 @@ def mj_jacGeom(
   | numpy.typing.NDArray[numpy.float64]
   | None,
   geom: typing.SupportsInt | typing.SupportsIndex,
-) -> None: ...
+) -> None:
+  """
+  Compute geom end-effector Jacobian.
+  """
+
 def mj_jacPointAxis(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
@@ -625,7 +890,11 @@ def mj_jacPointAxis(
   point: numpy.typing.ArrayLike,
   axis: numpy.typing.ArrayLike,
   body: typing.SupportsInt | typing.SupportsIndex,
-) -> None: ...
+) -> None:
+  """
+  Compute translation end-effector Jacobian of point, and rotation Jacobian of axis.
+  """
+
 def mj_jacSite(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
@@ -636,7 +905,14 @@ def mj_jacSite(
   | numpy.typing.NDArray[numpy.float64]
   | None,
   site: typing.SupportsInt | typing.SupportsIndex,
-) -> None: ...
+) -> None:
+  """Compute site end-effector Jacobian.
+
+  Write the site's translational/rotational Jacobian into (3, nv) arrays.
+
+  Use MJTNUM_DTYPE for outputs; pass None to skip either Jacobian.
+  """
+
 def mj_jacSubtreeCom(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
@@ -644,12 +920,28 @@ def mj_jacSubtreeCom(
   | numpy.typing.NDArray[numpy.float64]
   | None,
   body: typing.SupportsInt | typing.SupportsIndex,
-) -> None: ...
+) -> None:
+  """
+  Compute subtree center-of-mass end-effector Jacobian.
+  """
+
 def mj_kinematics(
   m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
-def mj_loadAllPluginLibraries(directory: str) -> None: ...
-def mj_loadPluginLibrary(path: str) -> None: ...
+) -> None:
+  """
+  Run forward kinematics.
+  """
+
+def mj_loadAllPluginLibraries(directory: str) -> None:
+  """
+  Scan a directory and load all dynamic libraries. Dynamic libraries in the specified directory are assumed to register one or more plugins. Optionally, if a callback is specified, it is called for each dynamic library encountered that registers plugins.
+  """
+
+def mj_loadPluginLibrary(path: str) -> None:
+  """
+  Load a dynamic library. The dynamic library is assumed to register one or more plugins.
+  """
+
 def mj_local2Global(
   d: mujoco._structs.MjData,
   xpos: numpy.typing.NDArray[numpy.float32]
@@ -660,45 +952,77 @@ def mj_local2Global(
   quat: numpy.typing.ArrayLike,
   body: typing.SupportsInt | typing.SupportsIndex,
   sameframe: typing.SupportsInt | typing.SupportsIndex,
-) -> None: ...
+) -> None:
+  """
+  Map from body local to global Cartesian coordinates, sameframe takes values from mjtSameFrame.
+  """
+
 def mj_makeConstraint(
   m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
-def mj_makeM(m: mujoco._structs.MjModel, d: mujoco._structs.MjData) -> None: ...
+) -> None:
+  """
+  Construct constraints.
+  """
+
+def mj_makeM(m: mujoco._structs.MjModel, d: mujoco._structs.MjData) -> None:
+  """
+  Make inertia matrix.
+  """
+
 def mj_maxContact(
   m: mujoco._structs.MjModel,
   g1: typing.SupportsInt | typing.SupportsIndex,
   g2: typing.SupportsInt | typing.SupportsIndex,
   has_margin: typing.SupportsInt | typing.SupportsIndex,
-) -> int: ...
+) -> int:
+  """
+  Return the maximum number of contacts that can be generated between two geoms. If has_margin is -1, then the margin is pulled from the model, otherwise if has_margin > 0 indicates that the geoms have a positive margin.
+  """
+
 def mj_mulJacTVec(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   vec: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Multiply dense or sparse constraint Jacobian transpose by vector.
+  """
+
 def mj_mulJacVec(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   vec: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Multiply dense or sparse constraint Jacobian by vector.
+  """
+
 def mj_mulM(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   vec: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Multiply vector by inertia matrix.
+  """
+
 def mj_mulM2(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   vec: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Multiply vector by (inertia matrix)^(1/2).
+  """
+
 def mj_multiRay(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
@@ -718,17 +1042,29 @@ def mj_multiRay(
   | None,
   nray: typing.SupportsInt | typing.SupportsIndex,
   cutoff: typing.SupportsFloat | typing.SupportsIndex,
-) -> None: ...
+) -> None:
+  """
+  Intersect multiple rays emanating from a single point, compute normals if given. Similar semantics to mj_ray, but vec, normal and dist are arrays. Geoms further than cutoff are ignored.
+  """
+
 def mj_name2id(
   m: mujoco._structs.MjModel,
   type: typing.SupportsInt | typing.SupportsIndex,
   name: str,
-) -> int: ...
+) -> int:
+  """
+  Get id of object with the specified mjtObj type and name; return -1 if id not found.
+  """
+
 def mj_normalizeQuat(
   m: mujoco._structs.MjModel,
   qpos: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
-) -> None: ...
+) -> None:
+  """
+  Normalize all quaternions in qpos-type vector.
+  """
+
 def mj_objectAcceleration(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
@@ -737,7 +1073,11 @@ def mj_objectAcceleration(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   flg_local: typing.SupportsInt | typing.SupportsIndex,
-) -> None: ...
+) -> None:
+  """
+  Compute object 6D acceleration (rot:lin) in object-centered frame, world/local orientation.
+  """
+
 def mj_objectVelocity(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
@@ -746,31 +1086,69 @@ def mj_objectVelocity(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   flg_local: typing.SupportsInt | typing.SupportsIndex,
-) -> None: ...
-def mj_passive(
-  m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
+) -> None:
+  """
+  Compute object 6D velocity (rot:lin) in object-centered frame, world/local orientation.
+  """
+
+def mj_passive(m: mujoco._structs.MjModel, d: mujoco._structs.MjData) -> None:
+  """
+  Compute qfrc_passive from spring-dampers, gravity compensation and fluid forces.
+  """
+
 def mj_printData(
   m: mujoco._structs.MjModel, d: mujoco._structs.MjData, filename: str
-) -> None: ...
+) -> None:
+  """
+  Print data to text file.
+  """
+
 def mj_printFormattedData(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
   filename: str,
   float_format: str,
-) -> None: ...
+) -> None:
+  """
+  Print mjData to text file, specifying format. float_format must be a valid printf-style format string for a single float value.
+  """
+
 def mj_printFormattedModel(
   m: mujoco._structs.MjModel, filename: str, float_format: str
-) -> None: ...
+) -> None:
+  """
+  Print mjModel to text file, specifying format. float_format must be a valid printf-style format string for a single float value.
+  """
+
 def mj_printFormattedScene(
   s: mujoco._structs.MjvScene, filename: str, float_format: str
-) -> None: ...
-def mj_printModel(m: mujoco._structs.MjModel, filename: str) -> None: ...
-def mj_printScene(s: mujoco._structs.MjvScene, filename: str) -> None: ...
-def mj_printSchema(flg_html: bool, flg_pad: bool) -> str: ...
+) -> None:
+  """
+  Print scene to text file, specifying format. float_format must be a valid printf-style format string for a single float value.
+  """
+
+def mj_printModel(m: mujoco._structs.MjModel, filename: str) -> None:
+  """
+  Print model to text file.
+  """
+
+def mj_printScene(s: mujoco._structs.MjvScene, filename: str) -> None:
+  """
+  Print scene to text file.
+  """
+
+def mj_printSchema(flg_html: bool, flg_pad: bool) -> str:
+  """
+  Print internal XML schema as plain text or HTML, with style-padding or &nbsp;.
+  """
+
 def mj_projectConstraint(
   m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
+) -> None:
+  """
+  Compute inverse constraint inertia efc_AR.
+  """
+
 def mj_ray(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
@@ -787,7 +1165,11 @@ def mj_ray(
   normal: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64]
   | None = None,
-) -> float: ...
+) -> float:
+  """
+  Intersect ray (pnt+x*vec, x>=0) with visible geoms, except geoms in bodyexclude. Return distance (x) to nearest surface, or -1 if no intersection. geomgroup, flg_static are as in mjvOption; geomgroup==NULL skips group exclusion.
+  """
+
 def mj_rayFlex(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
@@ -806,7 +1188,11 @@ def mj_rayFlex(
   normal: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64]
   | None = None,
-) -> float: ...
+) -> float:
+  """
+  Intersect ray with flex; return nearest distance or -1 if no intersection, and also output nearest vertex id and surface normal.
+  """
+
 def mj_rayHfield(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
@@ -816,7 +1202,11 @@ def mj_rayHfield(
   normal: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64]
   | None = None,
-) -> float: ...
+) -> float:
+  """
+  Intersect ray with hfield; return nearest distance or -1 if no intersection.
+  """
+
 def mj_rayMesh(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
@@ -826,7 +1216,11 @@ def mj_rayMesh(
   normal: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64]
   | None = None,
-) -> float: ...
+) -> float:
+  """
+  Intersect ray with mesh; return nearest distance or -1 if no intersection.
+  """
+
 def mj_readCtrl(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
@@ -835,9 +1229,11 @@ def mj_readCtrl(
   result: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   interp: typing.SupportsInt | typing.SupportsIndex,
-) -> (
-  numpy.typing.NDArray[numpy.float32] | numpy.typing.NDArray[numpy.float64]
-): ...
+) -> numpy.typing.NDArray[numpy.float32] | numpy.typing.NDArray[numpy.float64]:
+  """
+  Read ctrl value for actuator at given time. Returns pointer to ctrl (no history) or history buffer (exact match), or NULL if interpolation performed (writes to result). interp: 0=zero-order-hold, 1=linear, 2=cubic spline.
+  """
+
 def mj_readSensor(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
@@ -846,40 +1242,74 @@ def mj_readSensor(
   result: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   interp: typing.SupportsInt | typing.SupportsIndex,
-) -> (
-  numpy.typing.NDArray[numpy.float32] | numpy.typing.NDArray[numpy.float64]
-): ...
+) -> numpy.typing.NDArray[numpy.float32] | numpy.typing.NDArray[numpy.float64]:
+  """
+  Read sensor value from history buffer at given time. Returns pointer to sensordata (no history) or history buffer (exact match), or NULL if interpolation performed (writes to result). interp: 0=zero-order-hold, 1=linear, 2=cubic spline.
+  """
+
 def mj_referenceConstraint(
   m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
-def mj_resetCallbacks() -> None: ...
-def mj_resetCtrl(
-  m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
-def mj_resetData(
-  m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
+) -> None:
+  """
+  Compute efc_vel, efc_aref.
+  """
+
+def mj_resetCallbacks() -> None:
+  """
+  Reset all callbacks to NULL pointers (NULL is the default).
+  """
+
+def mj_resetCtrl(m: mujoco._structs.MjModel, d: mujoco._structs.MjData) -> None:
+  """
+  Reset ctrl to neutral values: zero, except quaternion inputs which reset to the identity.
+  """
+
+def mj_resetData(m: mujoco._structs.MjModel, d: mujoco._structs.MjData) -> None:
+  """
+  Reset data to defaults.
+  """
+
 def mj_resetDataDebug(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
   debug_value: typing.SupportsInt | typing.SupportsIndex,
-) -> None: ...
+) -> None:
+  """
+  Reset data to defaults, fill everything else with debug_value.
+  """
+
 def mj_resetDataKeyframe(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
   key: typing.SupportsInt | typing.SupportsIndex,
-) -> None: ...
+) -> None:
+  """
+  Reset data. If 0 <= key < nkey, set fields from specified keyframe.
+  """
+
 def mj_rne(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
   flg_acc: typing.SupportsInt | typing.SupportsIndex,
   result: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
-) -> None: ...
+) -> None:
+  """
+  RNE: compute M(qpos)*qacc + C(qpos,qvel); flg_acc=0 removes inertial term.
+  """
+
 def mj_rnePostConstraint(
   m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
-def mj_saveLastXML(filename: str, m: mujoco._structs.MjModel) -> None: ...
+) -> None:
+  """
+  RNE with complete data: compute cacc, cfrc_ext, cfrc_int.
+  """
+
+def mj_saveLastXML(filename: str, m: mujoco._structs.MjModel) -> None:
+  """
+  Update XML data structures with info from low-level model created with mj_loadXML, save as MJCF. If error is not NULL, it must have size error_sz.
+  """
+
 def mj_saveModel(
   m: mujoco._structs.MjModel,
   filename: str | None = None,
@@ -887,79 +1317,165 @@ def mj_saveModel(
     numpy.typing.NDArray[numpy.uint8], '[m, 1]', 'flags.writeable'
   ]
   | None = None,
-) -> None: ...
-def mj_sensorAcc(
-  m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
-def mj_sensorPos(
-  m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
-def mj_sensorVel(
-  m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
+) -> None:
+  """
+  Save model to binary MJB file or memory buffer; buffer has precedence when given.
+  """
+
+def mj_sensorAcc(m: mujoco._structs.MjModel, d: mujoco._structs.MjData) -> None:
+  """
+  Evaluate acceleration and force-dependent sensors.
+  """
+
+def mj_sensorPos(m: mujoco._structs.MjModel, d: mujoco._structs.MjData) -> None:
+  """
+  Evaluate position-dependent sensors.
+  """
+
+def mj_sensorVel(m: mujoco._structs.MjModel, d: mujoco._structs.MjData) -> None:
+  """
+  Evaluate velocity-dependent sensors.
+  """
+
 def mj_setCacheCapacity(
   cache: typing_extensions.CapsuleType,
   size: typing.SupportsInt | typing.SupportsIndex,
-) -> int: ...
-def mj_setConst(
-  m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
+) -> int:
+  """
+  Set the capacity of the asset cache in bytes (0 to disable); return the new capacity.
+  """
+
+def mj_setConst(m: mujoco._structs.MjModel, d: mujoco._structs.MjData) -> None:
+  """
+  Set constant fields of mjModel, corresponding to qpos0 configuration.
+  """
+
 def mj_setKeyframe(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
   k: typing.SupportsInt | typing.SupportsIndex,
-) -> None: ...
+) -> None:
+  """
+  Copy current state to the k-th model keyframe.
+  """
+
 def mj_setLengthRange(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
   index: typing.SupportsInt | typing.SupportsIndex,
   opt: mujoco._structs.MjLROpt,
-) -> None: ...
+) -> None:
+  """
+  Set actuator_lengthrange for specified actuator; return 1 if ok, 0 if error.
+  """
+
 def mj_setState(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
   state: numpy.typing.ArrayLike,
   sig: typing.SupportsInt | typing.SupportsIndex,
-) -> None: ...
+) -> None:
+  """
+  Set state.
+  """
+
 def mj_setTotalmass(
   m: mujoco._structs.MjModel,
   newmass: typing.SupportsFloat | typing.SupportsIndex,
-) -> None: ...
-def mj_sizeModel(m: mujoco._structs.MjModel) -> int: ...
+) -> None:
+  """
+  Scale body masses and inertias to achieve specified total mass.
+  """
+
+def mj_sizeModel(m: mujoco._structs.MjModel) -> int:
+  """
+  Return size of buffer needed to hold model.
+  """
+
 def mj_solveM(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
   x: numpy.typing.NDArray[numpy.float32] | numpy.typing.NDArray[numpy.float64],
   y: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Solve linear system M * x = y using factorization:  x = inv(L'*D*L)*y
+  """
+
 def mj_solveM2(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
   x: numpy.typing.NDArray[numpy.float32] | numpy.typing.NDArray[numpy.float64],
   y: numpy.typing.ArrayLike,
   sqrtInvD: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Half of linear solve:  x = sqrt(inv(D))*inv(L')*y
+  """
+
 def mj_stateSize(
   m: mujoco._structs.MjModel, sig: typing.SupportsInt | typing.SupportsIndex
-) -> int: ...
+) -> int:
+  """
+  Return size of state signature.
+  """
+
 def mj_step(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
   nstep: typing.SupportsInt | typing.SupportsIndex = 1,
-) -> None: ...
-def mj_step1(m: mujoco._structs.MjModel, d: mujoco._structs.MjData) -> None: ...
-def mj_step2(m: mujoco._structs.MjModel, d: mujoco._structs.MjData) -> None: ...
+) -> None:
+  """Advance simulation, use control callback to obtain external force and control. Optionally, repeat nstep times.
+
+  Advance time by nstep simulation steps using the current state and controls.
+
+  >>> import mujoco
+  >>> model = mujoco.MjModel.from_xml_string('<mujoco/>')
+  >>> data = mujoco.MjData(model)
+  >>> mujoco.mj_step(model, data)
+  >>> data.time > 0
+  True
+  """
+
+def mj_step1(m: mujoco._structs.MjModel, d: mujoco._structs.MjData) -> None:
+  """
+  Advance simulation in two steps: before external force and control is set by user.
+  """
+
+def mj_step2(m: mujoco._structs.MjModel, d: mujoco._structs.MjData) -> None:
+  """
+  Advance simulation in two steps: after external force and control is set by user.
+  """
+
 def mj_subtreeVel(
   m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
-def mj_tendon(
-  m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
+) -> None:
+  """
+  Sub-tree linear velocity and angular momentum: compute subtree_linvel, subtree_angmom.
+  """
+
+def mj_tendon(m: mujoco._structs.MjModel, d: mujoco._structs.MjData) -> None:
+  """
+  Compute tendon lengths, velocities and moment arms.
+  """
+
 def mj_transmission(
   m: mujoco._structs.MjModel, d: mujoco._structs.MjData
-) -> None: ...
-def mj_version() -> int: ...
-def mj_versionString() -> str: ...
+) -> None:
+  """
+  Compute actuator transmission lengths and moments.
+  """
+
+def mj_version() -> int:
+  """
+  Return version number: 1.0.2 is encoded as 102.
+  """
+
+def mj_versionString() -> str:
+  """
+  Return the current version of MuJoCo as a null-terminated string.
+  """
+
 def mjd_inverseFD(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
@@ -986,7 +1502,11 @@ def mjd_inverseFD(
   DmDq: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64]
   | None,
-) -> None: ...
+) -> None:
+  """
+  Finite differenced Jacobians of (force, sensors) = mj_inverse(state, acceleration)   All outputs are optional. Output dimensions (transposed w.r.t Control Theory convention):     DfDq: (nv x nv)     DfDv: (nv x nv)     DfDa: (nv x nv)     DsDq: (nv x nsensordata)     DsDv: (nv x nsensordata)     DsDa: (nv x nsensordata)     DmDq: (nv x nC)   single-letter shortcuts:     inputs: q=qpos, v=qvel, a=qacc     outputs: f=qfrc_inverse, s=sensordata, m=M   notes:     optionally computes mass matrix Jacobian DmDq     flg_actuation specifies whether to subtract qfrc_actuator from qfrc_inverse
+  """
+
 def mjd_quatIntegrate(
   vel: numpy.typing.ArrayLike,
   scale: typing.SupportsFloat | typing.SupportsIndex,
@@ -996,7 +1516,11 @@ def mjd_quatIntegrate(
   | numpy.typing.NDArray[numpy.float64],
   Dscale: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
-) -> None: ...
+) -> None:
+  """
+  Derivatives of mju_quatIntegrate.
+  """
+
 def mjd_subQuat(
   qa: numpy.typing.ArrayLike,
   qb: numpy.typing.ArrayLike,
@@ -1006,7 +1530,11 @@ def mjd_subQuat(
   Db: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64]
   | None,
-) -> None: ...
+) -> None:
+  """
+  Derivatives of mju_subQuat.
+  """
+
 def mjd_transitionFD(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
@@ -1024,69 +1552,117 @@ def mjd_transitionFD(
   D: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64]
   | None,
-) -> None: ...
+) -> None:
+  """
+  Finite differenced transition matrices (control theory notation)   d(x_next) = A*dx + B*du   d(sensor) = C*dx + D*du   required output matrix dimensions:      A: (2*nv+na x 2*nv+na)      B: (2*nv+na x nu)      D: (nsensordata x 2*nv+na)      C: (nsensordata x nu)
+  """
+
 def mju_Halton(
   index: typing.SupportsInt | typing.SupportsIndex,
   base: typing.SupportsInt | typing.SupportsIndex,
-) -> float: ...
+) -> float:
+  """
+  Generate Halton sequence.
+  """
+
 def mju_L1(
   vec: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
-) -> float: ...
+) -> float:
+  """
+  Return L1 norm: sum(abs(vec)).
+  """
+
 def mju_add(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   vec1: numpy.typing.ArrayLike,
   vec2: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Set res = vec1 + vec2.
+  """
+
 def mju_add3(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   vec1: numpy.typing.ArrayLike,
   vec2: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Set res = vec1 + vec2.
+  """
+
 def mju_addScl(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   vec1: numpy.typing.ArrayLike,
   vec2: numpy.typing.ArrayLike,
   scl: typing.SupportsFloat | typing.SupportsIndex,
-) -> None: ...
+) -> None:
+  """
+  Set res = vec1 + vec2*scl.
+  """
+
 def mju_addScl3(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   vec1: numpy.typing.ArrayLike,
   vec2: numpy.typing.ArrayLike,
   scl: typing.SupportsFloat | typing.SupportsIndex,
-) -> None: ...
+) -> None:
+  """
+  Set res = vec1 + vec2*scl.
+  """
+
 def mju_addTo(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   vec: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Set res = res + vec.
+  """
+
 def mju_addTo3(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   vec: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Set res = res + vec.
+  """
+
 def mju_addToScl(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   vec: numpy.typing.ArrayLike,
   scl: typing.SupportsFloat | typing.SupportsIndex,
-) -> None: ...
+) -> None:
+  """
+  Set res = res + vec*scl.
+  """
+
 def mju_addToScl3(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   vec: numpy.typing.ArrayLike,
   scl: typing.SupportsFloat | typing.SupportsIndex,
-) -> None: ...
+) -> None:
+  """
+  Set res = res + vec*scl.
+  """
+
 def mju_axisAngle2Quat(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   axis: numpy.typing.ArrayLike,
   angle: typing.SupportsFloat | typing.SupportsIndex,
-) -> None: ...
+) -> None:
+  """
+  Convert axisAngle to quaternion.
+  """
+
 def mju_band2Dense(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
@@ -1095,13 +1671,21 @@ def mju_band2Dense(
   nband: typing.SupportsInt | typing.SupportsIndex,
   ndense: typing.SupportsInt | typing.SupportsIndex,
   flg_sym: bool,
-) -> None: ...
+) -> None:
+  """
+  Convert banded matrix to dense matrix, fill upper triangle if flg_sym>0.
+  """
+
 def mju_bandDiag(
   i: typing.SupportsInt | typing.SupportsIndex,
   ntotal: typing.SupportsInt | typing.SupportsIndex,
   nband: typing.SupportsInt | typing.SupportsIndex,
   ndense: typing.SupportsInt | typing.SupportsIndex,
-) -> int: ...
+) -> int:
+  """
+  Address of diagonal element i in band-dense matrix representation.
+  """
+
 def mju_bandMulMatVec(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
@@ -1112,7 +1696,11 @@ def mju_bandMulMatVec(
   ndense: typing.SupportsInt | typing.SupportsIndex,
   nvec: typing.SupportsInt | typing.SupportsIndex,
   flg_sym: bool,
-) -> None: ...
+) -> None:
+  """
+  Multiply band-diagonal matrix with nvec vectors, include upper triangle if flg_sym>0.
+  """
+
 def mju_boxQP(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
@@ -1125,12 +1713,20 @@ def mju_boxQP(
   g: numpy.typing.ArrayLike,
   lower: numpy.typing.ArrayLike | None,
   upper: numpy.typing.ArrayLike | None,
-) -> int: ...
+) -> int:
+  """
+  minimize 0.5*x'*H*x + x'*g  s.t. lower <= x <= upper; return rank or -1 if failed   inputs:     n           - problem dimension     H           - SPD matrix                n*n     g           - bias vector               n     lower       - lower bounds              n     upper       - upper bounds              n     res         - solution warmstart        n   return value:     nfree <= n  - rank of unconstrained subspace, -1 if failure   outputs (required):     res         - solution                  n     R           - subspace Cholesky factor  nfree*nfree    allocated: n*(n+7)   outputs (optional):     index       - set of free dimensions    nfree          allocated: n   notes:     the initial value of res is used to warmstart the solver     R must have allocatd size n*(n+7), but only nfree*nfree values are used in output     index (if given) must have allocated size n, but only nfree values are used in output     only the lower triangles of H and R and are read from and written to, respectively     the convenience function mju_boxQPmalloc allocates the required data structures
+  """
+
 def mju_cholFactor(
   mat: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   mindiag: typing.SupportsFloat | typing.SupportsIndex,
-) -> int: ...
+) -> int:
+  """
+  Cholesky decomposition: mat = L*L'; return rank, decomposition performed in-place into mat.
+  """
+
 def mju_cholFactorBand(
   mat: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
@@ -1139,13 +1735,21 @@ def mju_cholFactorBand(
   ndense: typing.SupportsInt | typing.SupportsIndex,
   diagadd: typing.SupportsFloat | typing.SupportsIndex,
   diagmul: typing.SupportsFloat | typing.SupportsIndex,
-) -> float: ...
+) -> float:
+  """
+  Band-dense Cholesky decomposition.  Return minimum value in the factorized diagonal, or 0 if rank-deficient.  mat has (ntotal-ndense) x nband + ndense x ntotal elements.  The first (ntotal-ndense) x nband store the band part, left of diagonal, inclusive.  The second ndense x ntotal store the band part as entire dense rows.  Add diagadd+diagmul*mat_ii to diagonal before factorization.
+  """
+
 def mju_cholSolve(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   mat: numpy.typing.ArrayLike,
   vec: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Solve (mat*mat') * res = vec, where mat is a Cholesky factor.
+  """
+
 def mju_cholSolveBand(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
@@ -1154,50 +1758,86 @@ def mju_cholSolveBand(
   ntotal: typing.SupportsInt | typing.SupportsIndex,
   nband: typing.SupportsInt | typing.SupportsIndex,
   ndense: typing.SupportsInt | typing.SupportsIndex,
-) -> None: ...
+) -> None:
+  """
+  Solve (mat*mat')*res = vec where mat is a band-dense Cholesky factor.
+  """
+
 def mju_cholUpdate(
   mat: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   x: numpy.typing.NDArray[numpy.float32] | numpy.typing.NDArray[numpy.float64],
   flg_plus: typing.SupportsInt | typing.SupportsIndex,
-) -> int: ...
+) -> int:
+  """
+  Cholesky rank-one update: L*L' +/- x*x'; return rank.
+  """
+
 def mju_clip(
   x: typing.SupportsFloat | typing.SupportsIndex,
   min: typing.SupportsFloat | typing.SupportsIndex,
   max: typing.SupportsFloat | typing.SupportsIndex,
-) -> float: ...
+) -> float:
+  """
+  Clip x to the range [min, max].
+  """
+
 def mju_copy(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   vec: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Set res = vec.
+  """
+
 def mju_copy3(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   data: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Set res = vec.
+  """
+
 def mju_copy4(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   data: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Set res = vec.
+  """
+
 def mju_cross(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   a: numpy.typing.ArrayLike,
   b: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Compute cross-product: res = cross(a, b).
+  """
+
 def mju_d2n(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   vec: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Convert from double to mjtNum.
+  """
+
 def mju_decodePyramid(
   force: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   pyramid: numpy.typing.ArrayLike,
   mu: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Convert pyramid representation to contact force.
+  """
+
 def mju_dense2Band(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
@@ -1205,7 +1845,11 @@ def mju_dense2Band(
   ntotal: typing.SupportsInt | typing.SupportsIndex,
   nband: typing.SupportsInt | typing.SupportsIndex,
   ndense: typing.SupportsInt | typing.SupportsIndex,
-) -> None: ...
+) -> None:
+  """
+  Convert dense matrix to banded matrix.
+  """
+
 def mju_dense2sparse(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
@@ -1219,22 +1863,42 @@ def mju_dense2sparse(
   colind: typing.Annotated[
     numpy.typing.NDArray[numpy.int32], '[m, 1]', 'flags.writeable'
   ],
-) -> int: ...
+) -> int:
+  """
+  Convert matrix from dense to sparse.  nnz is size of res and colind; return 1 if too small, 0 otherwise.
+  """
+
 def mju_derivQuat(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   quat: numpy.typing.ArrayLike,
   vel: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Compute time-derivative of quaternion, given 3D rotational velocity.
+  """
+
 def mju_dist3(
   pos1: numpy.typing.ArrayLike, pos2: numpy.typing.ArrayLike
-) -> float: ...
+) -> float:
+  """
+  Return Cartesian distance between 3D vectors pos1 and pos2.
+  """
+
 def mju_dot(
   vec1: numpy.typing.ArrayLike, vec2: numpy.typing.ArrayLike
-) -> float: ...
+) -> float:
+  """
+  Return dot-product of vec1 and vec2.
+  """
+
 def mju_dot3(
   vec1: numpy.typing.ArrayLike, vec2: numpy.typing.ArrayLike
-) -> float: ...
+) -> float:
+  """
+  Return dot-product of vec1 and vec2.
+  """
+
 def mju_eig3(
   eigval: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
@@ -1243,108 +1907,196 @@ def mju_eig3(
   quat: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   mat: numpy.typing.ArrayLike,
-) -> int: ...
+) -> int:
+  """
+  Eigenvalue decomposition of symmetric 3x3 matrix, mat = eigvec * diag(eigval) * eigvec'.
+  """
+
 def mju_encodePyramid(
   pyramid: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   force: numpy.typing.ArrayLike,
   mu: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Convert contact force to pyramid representation.
+  """
+
 def mju_euler2Quat(
   quat: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   euler: numpy.typing.ArrayLike,
   seq: str,
-) -> None: ...
+) -> None:
+  """
+  Convert sequence of Euler angles (radians) to quaternion. seq[0,1,2] must be in 'xyzXYZ', lower/upper-case mean intrinsic/extrinsic rotations.
+  """
+
 def mju_eye(
   mat: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
-) -> None: ...
+) -> None:
+  """
+  Set mat to the identity matrix.
+  """
+
 def mju_f2n(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   vec: typing.Annotated[numpy.typing.NDArray[numpy.float32], '[m, 1]'],
-) -> None: ...
+) -> None:
+  """
+  Convert from float to mjtNum.
+  """
+
 def mju_fill(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   val: typing.SupportsFloat | typing.SupportsIndex,
-) -> None: ...
-def mju_getXMLDependencies(filename: str) -> list[str]: ...
+) -> None:
+  """
+  Set res = val.
+  """
+
+def mju_getXMLDependencies(filename: str) -> list[str]:
+  """
+  Given MJCF filename, fills dependencies with a list of all other asset files it depends on. The search is recursive, and the list includes the filename itself.
+  """
+
 def mju_insertionSort(
   list: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
-) -> None: ...
+) -> None:
+  """
+  Insertion sort, resulting list is in increasing order.
+  """
+
 def mju_insertionSortInt(
   list: typing.Annotated[
     numpy.typing.NDArray[numpy.int32], '[m, 1]', 'flags.writeable'
   ],
-) -> None: ...
-def mju_isBad(x: typing.SupportsFloat | typing.SupportsIndex) -> int: ...
+) -> None:
+  """
+  Integer insertion sort, resulting list is in increasing order.
+  """
+
+def mju_isBad(x: typing.SupportsFloat | typing.SupportsIndex) -> int:
+  """
+  Return 1 if nan or abs(x)>mjMAXVAL, 0 otherwise. Used by check functions.
+  """
+
 def mju_isZero(
   vec: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
-) -> int: ...
+) -> int:
+  """
+  Return 1 if all elements are 0.
+  """
+
 def mju_mat2Quat(
   quat: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   mat: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Convert 3D rotation matrix to quaternion.
+  """
+
 def mju_mat2Rot(
   quat: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   mat: numpy.typing.ArrayLike,
-) -> int: ...
+) -> int:
+  """
+  Extract 3D rotation from an arbitrary 3x3 matrix by refining the input quaternion. Return the number of iterations required to converge.
+  """
+
 def mju_max(
   a: typing.SupportsFloat | typing.SupportsIndex,
   b: typing.SupportsFloat | typing.SupportsIndex,
-) -> float: ...
+) -> float:
+  """
+  Return max(a,b) with single evaluation of a and b.
+  """
+
 def mju_min(
   a: typing.SupportsFloat | typing.SupportsIndex,
   b: typing.SupportsFloat | typing.SupportsIndex,
-) -> float: ...
+) -> float:
+  """
+  Return min(a,b) with single evaluation of a and b.
+  """
+
 def mju_mulMatMat(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   mat1: numpy.typing.ArrayLike,
   mat2: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Multiply matrices: res = mat1 * mat2.
+  """
+
 def mju_mulMatMatT(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   mat1: numpy.typing.ArrayLike,
   mat2: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Multiply matrices, second argument transposed: res = mat1 * mat2'.
+  """
+
 def mju_mulMatTMat(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   mat1: numpy.typing.ArrayLike,
   mat2: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Multiply matrices, first argument transposed: res = mat1' * mat2.
+  """
+
 def mju_mulMatTVec(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   mat: numpy.typing.ArrayLike,
   vec: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Multiply transposed matrix and vector: res = mat' * vec.
+  """
+
 def mju_mulMatTVec3(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   mat: numpy.typing.ArrayLike,
   vec: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Multiply transposed 3-by-3 matrix by vector: res = mat' * vec.
+  """
+
 def mju_mulMatVec(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   mat: numpy.typing.ArrayLike,
   vec: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Multiply matrix and vector: res = mat * vec.
+  """
+
 def mju_mulMatVec3(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   mat: numpy.typing.ArrayLike,
   vec: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Multiply 3-by-3 matrix by vector: res = mat * vec.
+  """
+
 def mju_mulPose(
   posres: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
@@ -1354,53 +2106,89 @@ def mju_mulPose(
   quat1: numpy.typing.ArrayLike,
   pos2: numpy.typing.ArrayLike,
   quat2: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Multiply two poses.
+  """
+
 def mju_mulQuat(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   quat1: numpy.typing.ArrayLike,
   quat2: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Multiply quaternions.
+  """
+
 def mju_mulQuatAxis(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   quat: numpy.typing.ArrayLike,
   axis: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Multiply quaternion and axis.
+  """
+
 def mju_mulVecMatVec(
   vec1: numpy.typing.ArrayLike,
   mat: numpy.typing.ArrayLike,
   vec2: numpy.typing.ArrayLike,
-) -> float: ...
+) -> float:
+  """
+  Multiply square matrix with vectors on both sides: return vec1' * mat * vec2.
+  """
+
 def mju_muscleBias(
   len: typing.SupportsFloat | typing.SupportsIndex,
   lengthrange: numpy.typing.ArrayLike,
   acc0: typing.SupportsFloat | typing.SupportsIndex,
   prm: numpy.typing.ArrayLike,
-) -> float: ...
+) -> float:
+  """
+  Muscle passive force, prm = (range[2], force, scale, lmin, lmax, vmax, fpmax, fvmax).
+  """
+
 def mju_muscleDynamics(
   ctrl: typing.SupportsFloat | typing.SupportsIndex,
   act: typing.SupportsFloat | typing.SupportsIndex,
   prm: numpy.typing.ArrayLike,
-) -> float: ...
+) -> float:
+  """
+  Muscle activation dynamics, prm = (tau_act, tau_deact, smoothing_width).
+  """
+
 def mju_muscleGain(
   len: typing.SupportsFloat | typing.SupportsIndex,
   vel: typing.SupportsFloat | typing.SupportsIndex,
   lengthrange: numpy.typing.ArrayLike,
   acc0: typing.SupportsFloat | typing.SupportsIndex,
   prm: numpy.typing.ArrayLike,
-) -> float: ...
+) -> float:
+  """
+  Muscle active force, prm = (range[2], force, scale, lmin, lmax, vmax, fpmax, fvmax).
+  """
+
 def mju_n2d(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   vec: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Convert from mjtNum to double.
+  """
+
 def mju_n2f(
   res: typing.Annotated[
     numpy.typing.NDArray[numpy.float32], '[m, 1]', 'flags.writeable'
   ],
   vec: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Convert from mjtNum to float.
+  """
+
 def mju_negPose(
   posres: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
@@ -1408,55 +2196,107 @@ def mju_negPose(
   | numpy.typing.NDArray[numpy.float64],
   pos: numpy.typing.ArrayLike,
   quat: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Conjugate pose, corresponding to the opposite spatial transformation.
+  """
+
 def mju_negQuat(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   quat: numpy.typing.ArrayLike,
-) -> None: ...
-def mju_norm(res: numpy.typing.ArrayLike) -> float: ...
-def mju_norm3(vec: numpy.typing.ArrayLike) -> float: ...
+) -> None:
+  """
+  Conjugate quaternion, corresponding to opposite rotation.
+  """
+
+def mju_norm(res: numpy.typing.ArrayLike) -> float:
+  """
+  Return vector length (without normalizing vector).
+  """
+
+def mju_norm3(vec: numpy.typing.ArrayLike) -> float:
+  """
+  Return vector length (without normalizing the vector).
+  """
+
 def mju_normalize(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
-) -> float: ...
+) -> float:
+  """
+  Normalize vector; return length before normalization.
+  """
+
 def mju_normalize3(
   vec: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
-) -> float: ...
+) -> float:
+  """
+  Normalize vector; return length before normalization.
+  """
+
 def mju_normalize4(
   vec: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
-) -> float: ...
-def mju_printMat(mat: numpy.typing.ArrayLike) -> None: ...
+) -> float:
+  """
+  Normalize vector; return length before normalization.
+  """
+
+def mju_printMat(mat: numpy.typing.ArrayLike) -> None:
+  """
+  Print matrix to screen.
+  """
+
 def mju_printMatSparse(
   mat: numpy.typing.ArrayLike,
   rownnz: typing.Annotated[numpy.typing.NDArray[numpy.int32], '[m, 1]'],
   rowadr: typing.Annotated[numpy.typing.NDArray[numpy.int32], '[m, 1]'],
   colind: typing.Annotated[numpy.typing.NDArray[numpy.int32], '[m, 1]'],
-) -> None: ...
+) -> None:
+  """
+  Print sparse matrix to screen.
+  """
+
 def mju_quat2Mat(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   quat: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Convert quaternion to 3D rotation matrix.
+  """
+
 def mju_quat2Vel(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   quat: numpy.typing.ArrayLike,
   dt: typing.SupportsFloat | typing.SupportsIndex,
-) -> None: ...
+) -> None:
+  """
+  Convert quaternion (corresponding to orientation difference) to 3D velocity.
+  """
+
 def mju_quatIntegrate(
   quat: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   vel: numpy.typing.ArrayLike,
   scale: typing.SupportsFloat | typing.SupportsIndex,
-) -> None: ...
+) -> None:
+  """
+  Integrate quaternion given 3D angular velocity.
+  """
+
 def mju_quatZ2Vec(
   quat: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   vec: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Construct quaternion performing rotation from z-axis to given vector.
+  """
+
 def mju_rayGeom(
   pos: numpy.typing.ArrayLike,
   mat: numpy.typing.ArrayLike,
@@ -1467,7 +2307,11 @@ def mju_rayGeom(
   normal: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64]
   | None = None,
-) -> float: ...
+) -> float:
+  """
+  Intersect ray with pure geom; return nearest distance or -1 if no intersection.
+  """
+
 def mju_raySkin(
   nface: typing.SupportsInt | typing.SupportsIndex,
   nvert: typing.SupportsInt | typing.SupportsIndex,
@@ -1478,28 +2322,56 @@ def mju_raySkin(
   vertid: typing.Annotated[
     numpy.typing.NDArray[numpy.int32], '[1, 1]', 'flags.writeable'
   ],
-) -> float: ...
+) -> float:
+  """
+  Intersect ray with skin; return nearest distance or -1 if no intersection, and also output nearest vertex id.
+  """
+
 def mju_rotVecQuat(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   vec: numpy.typing.ArrayLike,
   quat: numpy.typing.ArrayLike,
-) -> None: ...
-def mju_round(x: typing.SupportsFloat | typing.SupportsIndex) -> int: ...
+) -> None:
+  """
+  Rotate vector by quaternion.
+  """
+
+def mju_round(x: typing.SupportsFloat | typing.SupportsIndex) -> int:
+  """
+  Round x to nearest integer.
+  """
+
 def mju_scl(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   vec: numpy.typing.ArrayLike,
   scl: typing.SupportsFloat | typing.SupportsIndex,
-) -> None: ...
+) -> None:
+  """
+  Set res = vec*scl.
+  """
+
 def mju_scl3(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   vec: numpy.typing.ArrayLike,
   scl: typing.SupportsFloat | typing.SupportsIndex,
-) -> None: ...
-def mju_sigmoid(x: typing.SupportsFloat | typing.SupportsIndex) -> float: ...
-def mju_sign(x: typing.SupportsFloat | typing.SupportsIndex) -> float: ...
+) -> None:
+  """
+  Set res = vec*scl.
+  """
+
+def mju_sigmoid(x: typing.SupportsFloat | typing.SupportsIndex) -> float:
+  """
+  Sigmoid function over 0<=x<=1 using quintic polynomial.
+  """
+
+def mju_sign(x: typing.SupportsFloat | typing.SupportsIndex) -> float:
+  """
+  Return sign of x: +1, -1 or 0.
+  """
+
 def mju_sparse2dense(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
@@ -1507,14 +2379,22 @@ def mju_sparse2dense(
   rownnz: typing.Annotated[numpy.typing.NDArray[numpy.int32], '[m, 1]'],
   rowadr: typing.Annotated[numpy.typing.NDArray[numpy.int32], '[m, 1]'],
   colind: typing.Annotated[numpy.typing.NDArray[numpy.int32], '[m, 1]'],
-) -> None: ...
+) -> None:
+  """
+  Convert matrix from sparse to dense.
+  """
+
 def mju_springDamper(
   pos0: typing.SupportsFloat | typing.SupportsIndex,
   vel0: typing.SupportsFloat | typing.SupportsIndex,
   Kp: typing.SupportsFloat | typing.SupportsIndex,
   Kv: typing.SupportsFloat | typing.SupportsIndex,
   dt: typing.SupportsFloat | typing.SupportsIndex,
-) -> float: ...
+) -> float:
+  """
+  Integrate spring-damper analytically; return pos(dt).
+  """
+
 def mju_sqrMatTD(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
@@ -1522,43 +2402,79 @@ def mju_sqrMatTD(
   diag: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64]
   | None,
-) -> None: ...
+) -> None:
+  """
+  Set res = mat' * diag * mat if diag is not NULL, and res = mat' * mat otherwise.
+  """
+
 def mju_standardNormal(
   num2: typing.SupportsFloat | typing.SupportsIndex | None,
-) -> float: ...
-def mju_str2Type(str: str) -> int: ...
+) -> float:
+  """
+  Standard normal random number generator (optional second number).
+  """
+
+def mju_str2Type(str: str) -> int:
+  """
+  Convert type name to type id (mjtObj).
+  """
+
 def mju_sub(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   vec1: numpy.typing.ArrayLike,
   vec2: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Set res = vec1 - vec2.
+  """
+
 def mju_sub3(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   vec1: numpy.typing.ArrayLike,
   vec2: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Set res = vec1 - vec2.
+  """
+
 def mju_subFrom(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   vec: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Set res = res - vec.
+  """
+
 def mju_subFrom3(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   vec: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Set res = res - vec.
+  """
+
 def mju_subQuat(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   qa: numpy.typing.ArrayLike,
   qb: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Subtract quaternions, express as 3D velocity: qb*quat(res) = qa.
+  """
+
 def mju_sum(
   vec: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
-) -> float: ...
+) -> float:
+  """
+  Return sum(vec).
+  """
+
 def mju_sym2dense(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
@@ -1566,15 +2482,27 @@ def mju_sym2dense(
   rownnz: typing.Annotated[numpy.typing.NDArray[numpy.int32], '[m, 1]'],
   rowadr: typing.Annotated[numpy.typing.NDArray[numpy.int32], '[m, 1]'],
   colind: typing.Annotated[numpy.typing.NDArray[numpy.int32], '[m, 1]'],
-) -> None: ...
+) -> None:
+  """
+  Convert lower-triangular symmetric CSR matrix to full dense matrix.
+  """
+
 def mju_symmetrize(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   mat: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Symmetrize square matrix res = (mat + mat')/2.
+  """
+
 def mju_threadpool(
   d: mujoco._structs.MjData, nthread: typing.SupportsInt | typing.SupportsIndex
-) -> None: ...
+) -> None:
+  """
+  Create a thread pool with nthread worker threads.
+  """
+
 def mju_transformSpatial(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
@@ -1583,44 +2511,86 @@ def mju_transformSpatial(
   newpos: numpy.typing.ArrayLike,
   oldpos: numpy.typing.ArrayLike,
   rotnew2old: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Coordinate transform of 6D motion or force vector in rotation:translation format. rotnew2old is 3-by-3, NULL means no rotation; flg_force specifies force or motion type.
+  """
+
 def mju_transpose(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   mat: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Transpose matrix: res = mat'.
+  """
+
 def mju_trnVecPose(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   pos: numpy.typing.ArrayLike,
   quat: numpy.typing.ArrayLike,
   vec: numpy.typing.ArrayLike,
-) -> None: ...
-def mju_type2Str(type: typing.SupportsInt | typing.SupportsIndex) -> str: ...
+) -> None:
+  """
+  Transform vector by pose.
+  """
+
+def mju_type2Str(type: typing.SupportsInt | typing.SupportsIndex) -> str:
+  """
+  Convert type id (mjtObj) to type name.
+  """
+
 def mju_unit4(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
-) -> None: ...
+) -> None:
+  """
+  Set res = (1,0,0,0).
+  """
+
 def mju_warningText(
   warning: typing.SupportsInt | typing.SupportsIndex,
   info: typing.SupportsInt | typing.SupportsIndex,
-) -> str: ...
-def mju_writeLog(type: str, msg: str) -> None: ...
-def mju_writeNumBytes(
-  nbytes: typing.SupportsInt | typing.SupportsIndex,
-) -> str: ...
+) -> str:
+  """
+  Construct a warning message given the warning type and info.
+  """
+
+def mju_writeLog(type: str, msg: str) -> None:
+  """
+  Write [datetime, type: message] to MUJOCO_LOG.TXT.
+  """
+
+def mju_writeNumBytes(nbytes: typing.SupportsInt | typing.SupportsIndex) -> str:
+  """
+  Return human readable number of bytes using standard letter suffix.
+  """
+
 def mju_zero(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
-) -> None: ...
+) -> None:
+  """
+  Set res = 0.
+  """
+
 def mju_zero3(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
-) -> None: ...
+) -> None:
+  """
+  Set res = 0.
+  """
+
 def mju_zero4(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
-) -> None: ...
+) -> None:
+  """
+  Set res = 0.
+  """
+
 def mjv_addGeoms(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
@@ -1628,24 +2598,40 @@ def mjv_addGeoms(
   pert: mujoco._structs.MjvPerturb,
   catmask: typing.SupportsInt | typing.SupportsIndex,
   scn: mujoco._structs.MjvScene,
-) -> None: ...
+) -> None:
+  """
+  Add geoms from selected categories.
+  """
+
 def mjv_alignToCamera(
   res: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
   vec: numpy.typing.ArrayLike,
   forward: numpy.typing.ArrayLike,
-) -> None: ...
+) -> None:
+  """
+  Rotate 3D vec in horizontal plane by angle between (0,1) and (forward_x,forward_y).
+  """
+
 def mjv_applyPerturbForce(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
   pert: mujoco._structs.MjvPerturb,
-) -> None: ...
+) -> None:
+  """
+  Set perturb force,torque in d->xfrc_applied, if selected body is dynamic.
+  """
+
 def mjv_applyPerturbPose(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
   pert: mujoco._structs.MjvPerturb,
   flg_paused: typing.SupportsInt | typing.SupportsIndex,
-) -> None: ...
+) -> None:
+  """
+  Set perturb pos,quat in d->mocap when selected body is mocap, and in d->qpos otherwise. Write d->qpos only if flg_paused and subtree root for selected body has free joint.
+  """
+
 def mjv_cameraFrame(
   headpos: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
@@ -1656,7 +2642,11 @@ def mjv_cameraFrame(
   | numpy.typing.NDArray[numpy.float64],
   d: mujoco._structs.MjData,
   cam: mujoco._structs.MjvCamera,
-) -> None: ...
+) -> None:
+  """
+  Compute camera position and forward, up, and right vectors.
+  """
+
 def mjv_cameraFrustum(
   zver: typing.Annotated[
     numpy.typing.NDArray[numpy.float32], '[2, 1]', 'flags.writeable'
@@ -1669,7 +2659,11 @@ def mjv_cameraFrustum(
   ],
   m: mujoco._structs.MjModel,
   cam: mujoco._structs.MjvCamera,
-) -> None: ...
+) -> None:
+  """
+  Compute camera frustum: vertical, horizontal, and clip planes.
+  """
+
 def mjv_cameraInModel(
   headpos: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
@@ -1677,7 +2671,11 @@ def mjv_cameraInModel(
   | numpy.typing.NDArray[numpy.float64],
   up: numpy.typing.NDArray[numpy.float32] | numpy.typing.NDArray[numpy.float64],
   scn: mujoco._structs.MjvScene,
-) -> None: ...
+) -> None:
+  """
+  Get camera info in model space; average left and right OpenGL cameras.
+  """
+
 def mjv_cameraInRoom(
   headpos: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
@@ -1685,22 +2683,54 @@ def mjv_cameraInRoom(
   | numpy.typing.NDArray[numpy.float64],
   up: numpy.typing.NDArray[numpy.float32] | numpy.typing.NDArray[numpy.float64],
   scn: mujoco._structs.MjvScene,
-) -> None: ...
+) -> None:
+  """
+  Get camera info in room space; average left and right OpenGL cameras.
+  """
+
 def mjv_connector(
   geom: mujoco._structs.MjvGeom,
   type: typing.SupportsInt | typing.SupportsIndex,
   width: typing.SupportsFloat | typing.SupportsIndex,
   from_: numpy.typing.ArrayLike,
   to: numpy.typing.ArrayLike,
-) -> None: ...
-def mjv_defaultCamera(cam: mujoco._structs.MjvCamera) -> None: ...
-def mjv_defaultFigure(fig: mujoco._structs.MjvFigure) -> None: ...
+) -> None:
+  """
+  Set (type, size, pos, mat) for connector-type geom between given points. Assume that mjv_initGeom was already called to set all other properties. Width of mjGEOM_LINE is denominated in pixels.
+  """
+
+def mjv_defaultCamera(cam: mujoco._structs.MjvCamera) -> None:
+  """
+  Set default camera.
+  """
+
+def mjv_defaultFigure(fig: mujoco._structs.MjvFigure) -> None:
+  """
+  Set default figure.
+  """
+
 def mjv_defaultFreeCamera(
   m: mujoco._structs.MjModel, cam: mujoco._structs.MjvCamera
-) -> None: ...
-def mjv_defaultOption(opt: mujoco._structs.MjvOption) -> None: ...
-def mjv_defaultPerturb(pert: mujoco._structs.MjvPerturb) -> None: ...
-def mjv_frustumHeight(scn: mujoco._structs.MjvScene) -> float: ...
+) -> None:
+  """
+  Set default free camera.
+  """
+
+def mjv_defaultOption(opt: mujoco._structs.MjvOption) -> None:
+  """
+  Set default visualization options.
+  """
+
+def mjv_defaultPerturb(pert: mujoco._structs.MjvPerturb) -> None:
+  """
+  Set default perturbation.
+  """
+
+def mjv_frustumHeight(scn: mujoco._structs.MjvScene) -> float:
+  """
+  Get frustum height at unit distance from camera; average left and right OpenGL cameras.
+  """
+
 def mjv_initGeom(
   geom: mujoco._structs.MjvGeom,
   type: typing.SupportsInt | typing.SupportsIndex,
@@ -1708,18 +2738,30 @@ def mjv_initGeom(
   pos: numpy.typing.ArrayLike,
   mat: numpy.typing.ArrayLike,
   rgba: typing.Annotated[numpy.typing.NDArray[numpy.float32], '[4, 1]'],
-) -> None: ...
+) -> None:
+  """
+  Initialize given geom fields when not NULL, set the rest to their default values.
+  """
+
 def mjv_initPerturb(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
   scn: mujoco._structs.MjvScene,
   pert: mujoco._structs.MjvPerturb,
-) -> None: ...
+) -> None:
+  """
+  Copy perturb pos,quat from selected body; set scale for perturbation.
+  """
+
 def mjv_makeLights(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
   scn: mujoco._structs.MjvScene,
-) -> None: ...
+) -> None:
+  """
+  Make list of lights.
+  """
+
 def mjv_model2room(
   roompos: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
@@ -1728,14 +2770,22 @@ def mjv_model2room(
   modelpos: numpy.typing.ArrayLike,
   modelquat: numpy.typing.ArrayLike,
   scn: mujoco._structs.MjvScene,
-) -> None: ...
+) -> None:
+  """
+  Transform pose from model to room space.
+  """
+
 def mjv_moveCamera(
   m: mujoco._structs.MjModel,
   action: typing.SupportsInt | typing.SupportsIndex,
   reldx: typing.SupportsFloat | typing.SupportsIndex,
   reldy: typing.SupportsFloat | typing.SupportsIndex,
   cam: mujoco._structs.MjvCamera,
-) -> None: ...
+) -> None:
+  """
+  Move camera with mouse; action is mjtMouse.
+  """
+
 def mjv_moveModel(
   m: mujoco._structs.MjModel,
   action: typing.SupportsInt | typing.SupportsIndex,
@@ -1743,7 +2793,11 @@ def mjv_moveModel(
   reldy: typing.SupportsFloat | typing.SupportsIndex,
   roomup: numpy.typing.ArrayLike,
   scn: mujoco._structs.MjvScene,
-) -> None: ...
+) -> None:
+  """
+  Move model with mouse; action is mjtMouse.
+  """
+
 def mjv_movePerturb(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
@@ -1752,7 +2806,11 @@ def mjv_movePerturb(
   reldy: typing.SupportsFloat | typing.SupportsIndex,
   scn: mujoco._structs.MjvScene,
   pert: mujoco._structs.MjvPerturb,
-) -> None: ...
+) -> None:
+  """
+  Move perturb object with mouse; action is mjtMouse.
+  """
+
 def mjv_room2model(
   modelpos: numpy.typing.NDArray[numpy.float32]
   | numpy.typing.NDArray[numpy.float64],
@@ -1761,7 +2819,11 @@ def mjv_room2model(
   roompos: numpy.typing.ArrayLike,
   roomquat: numpy.typing.ArrayLike,
   scn: mujoco._structs.MjvScene,
-) -> None: ...
+) -> None:
+  """
+  Transform pose from room to model space.
+  """
+
 def mjv_select(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
@@ -1781,13 +2843,21 @@ def mjv_select(
   skinid: typing.Annotated[
     numpy.typing.NDArray[numpy.int32], '[1, 1]', 'flags.writeable'
   ],
-) -> int: ...
+) -> int:
+  """
+  Select geom, flex or skin with mouse; return bodyid; -1: none selected.
+  """
+
 def mjv_updateCamera(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
   cam: mujoco._structs.MjvCamera,
   scn: mujoco._structs.MjvScene,
-) -> None: ...
+) -> None:
+  """
+  Update camera.
+  """
+
 def mjv_updateScene(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
@@ -1796,9 +2866,16 @@ def mjv_updateScene(
   cam: mujoco._structs.MjvCamera,
   catmask: typing.SupportsInt | typing.SupportsIndex,
   scn: mujoco._structs.MjvScene,
-) -> None: ...
+) -> None:
+  """
+  Update entire scene given model state.
+  """
+
 def mjv_updateSkin(
   m: mujoco._structs.MjModel,
   d: mujoco._structs.MjData,
   scn: mujoco._structs.MjvScene,
-) -> None: ...
+) -> None:
+  """
+  Update skins.
+  """

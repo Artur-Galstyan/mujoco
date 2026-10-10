@@ -63,8 +63,10 @@ for details. The Git and local full-checkout commands above need neither path.
 
 ## Type hints
 
-Wheels built from this checkout bundle `.pyi` files for ten core native
-modules and public Python wrappers, plus `py.typed`. From the repository root,
+Wheels built from this checkout bundle 17 core stubs and 13 optional
+Filament and Studio stubs, plus `py.typed`. The optional stubs cover the
+Filament renderer, Studio native and web bindings, Dear ImGui, and ImPlot.
+From the repository root,
 install a matching built wheel in an active virtual environment (use one wheel
 file if `python/dist` contains several):
 
@@ -73,28 +75,66 @@ uv pip install python/dist/mujoco-3.15.1-*.whl
 ```
 
 The installed wheel needs no separate stub package or `stubPath` setting.
-Existing PyPI releases do not yet include these changes. The root `py.typed`
-marker does not mean every optional module is fully typed: Studio and Filament
-native extensions have no new stubs, and the separate `mujoco-mjx` distribution
-is outside this work. The hints do not specify exact NumPy array shapes or the
-compile-time precision of `mjtNum`; `MJTNUM_DTYPE` depends on the build.
+Existing PyPI releases do not yet include these changes. Editors can show the
+docs and examples bundled in the `.pyi` files; `help(mujoco.MjModel)` and
+`__doc__` still show runtime docs, not stub docs.
 
-To regenerate the native stubs, use Python 3.11 or newer (`tomllib` is required)
-and a matching double-precision MuJoCo 3.15.1 wheel built from this checkout.
+Typing is incomplete: the core stubs keep four `Any` annotations for
+`MjByteVec`, whose `std::byte` binding exposes a raw pointer with no safe
+Python scalar type. Do not use those annotations as a promise that raw pointers
+are safe. Some dynamic APIs and optional modules still lack precise types.
+NumPy array shapes are not encoded, and the compile-time precision of `mjtNum`
+is unknown from these hints; `MJTNUM_DTYPE` depends on the build. The optional
+stubs do not install the optional Studio or Filament native binaries. These
+modules may fail to import even though their stubs type-check.
+
+MJX (`mujoco-mjx`) has its own wheel and typing tests under `mjx/tests/typing`.
+This checker does not install or verify that separate distribution.
+
+A self-contained headless example:
+
+```python
+import mujoco
+
+model = mujoco.MjModel.from_xml_string('<mujoco/>')
+data = mujoco.MjData(model)
+mujoco.mj_step(model, data)
+assert data.time > 0
+```
+
+To regenerate the ten core native stubs and the root grouped-bind annotations,
+use Python 3.11 or newer (`tomllib` is required) and a matching
+double-precision MuJoCo 3.15.1 wheel built from this checkout.
 From the repository root, with that wheel installed in the active virtual
 environment, run:
 
 ```sh
 uv pip install --group python/pyproject.toml:typing
 python python/mujoco/codegen/generate_stubs.py --output python/mujoco
-python python/tests/typing/check.py
 ```
 
-Review the generated stubs before committing them. The generator and typing
-tests are developer tools in the repository, not part of the sdist or wheel.
-Wheel builds package the checked-in stubs without regenerating them. A Git or
-local full-checkout source install builds its own engine; a standalone Python
-source archive still needs a matching external SDK.
+`generate_filament_stubs.py` checks Filament bindings without writing files;
+pass `--write` to update `mjrf.pyi`. `generate_studio_stubs.py` rewrites the
+Dear ImGui and ImPlot stubs. Other optional stubs need manual review.
+
+Review the generated stubs before committing them. Wheel builds package the
+checked-in stubs without regenerating them. After building and installing an
+updated wheel, run this from the repository root:
+
+```sh
+python -I python/tests/typing/check.py
+```
+
+The checker reads the installed wheel, not the checkout. It checks all 30
+packaged stubs, checks the ten core native modules against their runtime API,
+and type-checks three copied consumers, including Filament and Studio examples,
+without importing optional binaries. It tests rejected types, audits core
+`Any` use, checks the optional generators against C++ source, and runs Ruff.
+It checks stub docs and runs headless `>>>` examples. GUI examples are plain
+code, not executable doctests. The generators and checker are developer tools
+in the repository, not part of the sdist or wheel. A Git or local
+full-checkout source install builds its own engine; a standalone Python source
+archive still needs a matching external SDK.
 
 ## Usage
 

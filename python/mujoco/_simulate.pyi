@@ -19,6 +19,7 @@ import types
 import typing
 
 import numpy
+import numpy.typing
 
 import mujoco._structs
 
@@ -39,12 +40,12 @@ class Simulate:
   speed_changed: bool
   def __init__(
     self,
-    arg0: typing.Any,
-    arg1: typing.Any,
-    arg2: typing.Any,
-    arg3: typing.Any,
+    arg0: mujoco._structs.MjvCamera,
+    arg1: mujoco._structs.MjvOption,
+    arg2: mujoco._structs.MjvPerturb,
+    arg3: mujoco._structs.MjvScene | None,
     arg4: bool,
-    arg5: typing.Any,
+    arg5: collections.abc.Callable[[int], object] | None,
   ) -> None: ...
   def add_to_history(self) -> None: ...
   def clear_figures(self) -> None: ...
@@ -52,7 +53,9 @@ class Simulate:
   def clear_texts(self) -> None: ...
   def destroy(self) -> None: ...
   def exit(self) -> None: ...
-  def load(self, arg0: typing.Any, arg1: typing.Any, arg2: str) -> None: ...
+  def load(
+    self, arg0: mujoco._structs.MjModel, arg1: mujoco._structs.MjData, arg2: str
+  ) -> None: ...
   def load_message(self, arg0: str) -> None: ...
   def load_message_clear(self) -> None: ...
   def lock(self) -> Mutex: ...
@@ -60,13 +63,13 @@ class Simulate:
   def set_figures(
     self,
     viewports_figures: collections.abc.Sequence[
-      tuple[mujoco._structs.MjrRect, typing.Any]
+      tuple[mujoco._structs.MjrRect, mujoco._structs.MjvFigure]
     ],
   ) -> None: ...
   def set_images(
     self,
     viewports_images: collections.abc.Sequence[
-      tuple[mujoco._structs.MjrRect, numpy.ndarray]
+      tuple[mujoco._structs.MjrRect, numpy.typing.NDArray[numpy.uint8]]
     ],
   ) -> None: ...
   def set_texts(
@@ -98,7 +101,7 @@ class Simulate:
   @property
   def ctrl_noise_std(self) -> float: ...
   @property
-  def d(self) -> typing.Any: ...
+  def d(self) -> mujoco._structs.MjData | None: ...
   @property
   def dropfilename(self) -> str: ...
   @property
@@ -110,7 +113,7 @@ class Simulate:
   @property
   def filename(self) -> str: ...
   @property
-  def m(self) -> typing.Any: ...
+  def m(self) -> mujoco._structs.MjModel | None: ...
   @property
   def measured_slowdown(self) -> float: ...
   @measured_slowdown.setter

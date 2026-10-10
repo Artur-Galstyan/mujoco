@@ -724,6 +724,17 @@ class MjVisual:
   def scale(self) -> MjVisual.Scale: ...
 
 class MjModel:
+  """Compiled model parameters shared by simulation states.
+
+  Create an MjData for mutable state. Multiple MjData instances can share one
+  model. Model arrays and named views share storage; use .copy() for a snapshot.
+
+  >>> import mujoco
+  >>> model = mujoco.MjModel.from_xml_string('<mujoco/>')
+  >>> model.nbody  # The world body is always present.
+  1
+  """
+
   _all_fields: typing.ClassVar[builtins.tuple] = ...
   _size_fields: typing.ClassVar[builtins.tuple] = ...
   flg_adhesion: bool
@@ -804,19 +815,31 @@ class MjModel:
     filename: str,
     assets: collections.abc.Mapping[str, bytes] | None = None,
     vfs: mujoco._specs.MjVfs | None = None,
-  ) -> MjModel: ...
+  ) -> MjModel:
+    """
+    Loads an MjModel from an MJB file and an optional assets dictionary.
+
+    The filename for the MJB can also refer to a key in the assets dictionary.
+    This is useful for example when the MJB is not available as a file on disk.
+    """
   @staticmethod
   def from_xml_path(
     filename: str,
     assets: collections.abc.Mapping[str, bytes] | None = None,
     vfs: mujoco._specs.MjVfs | None = None,
-  ) -> MjModel: ...
+  ) -> MjModel:
+    """
+    Loads an MjModel from an XML file and optional assets dict or VFS.
+    """
   @staticmethod
   def from_xml_string(
     xml: str,
     assets: collections.abc.Mapping[str, bytes] | None = None,
     vfs: mujoco._specs.MjVfs | None = None,
-  ) -> MjModel: ...
+  ) -> MjModel:
+    """
+    Loads an MjModel from an XML string and optional assets dict or VFS.
+    """
   def __copy__(self) -> MjModel: ...
   def __deepcopy__(self, arg0: dict) -> MjModel: ...
   def __getstate__(self) -> bytes: ...
@@ -892,7 +915,20 @@ class MjModel:
   @typing.overload
   def body(
     self, arg0: typing.SupportsInt | typing.SupportsIndex
-  ) -> _MjModelBodyViews: ...
+  ) -> _MjModelBodyViews:
+    """Look up a body by name or ID; its array fields view model storage.
+
+    >>> import mujoco
+    >>> model = mujoco.MjModel.from_xml_string(
+    ...     '<mujoco><worldbody><body name="link">'
+    ...     '<geom size=".1" mass="1"/>'
+    ...     '</body></worldbody></mujoco>')
+    >>> model.body('link').id
+    1
+    >>> model.body('link').pos[0] = 0.25
+    >>> float(model.body_pos[1, 0])
+    0.25
+    """
   @typing.overload
   def body(self, name: str = '') -> _MjModelBodyViews: ...
   @typing.overload
@@ -5318,11 +5354,11 @@ class MjLogMessage:
   def __eq__(self, arg0: object) -> bool: ...
   def __init__(self) -> None: ...
   @property
-  def body(self) -> typing.Any: ...
+  def body(self) -> str | None: ...
   @property
-  def file(self) -> typing.Any: ...
+  def file(self) -> str | None: ...
   @property
-  def func(self) -> typing.Any: ...
+  def func(self) -> str | None: ...
   @property
   def level(self) -> int: ...
   @level.setter
@@ -5712,6 +5748,28 @@ class _MjContactList:
   def vert(self) -> numpy.typing.NDArray[numpy.int32]: ...
 
 class MjData:
+  """Mutable simulation state and computed results for an MjModel.
+
+  Array fields and named views share storage with this data. Use .copy() to
+  keep an independent array. After editing qpos or qvel, call mj_forward to
+  refresh derived fields; mj_step also advances simulation time.
+
+  >>> import mujoco
+  >>> model = mujoco.MjModel.from_xml_string(
+  ...     '<mujoco><worldbody><body name="link"><freejoint/>'
+  ...     '<geom size=".1" mass="1"/>'
+  ...     '</body></worldbody></mujoco>')
+  >>> data = mujoco.MjData(model)
+  >>> data.qpos[0] = 0.5
+  >>> mujoco.mj_forward(model, data)
+  >>> float(data.body('link').xpos[0])
+  0.5
+  >>> saved = data.qpos.copy()
+  >>> data.qpos[0] = 1.0
+  >>> float(saved[0])
+  0.5
+  """
+
   _all_fields: typing.ClassVar[builtins.tuple] = ...
   flg_energypos: bool
   flg_energyvel: bool
@@ -5821,7 +5879,19 @@ class MjData:
   @typing.overload
   def joint(
     self, arg0: typing.SupportsInt | typing.SupportsIndex
-  ) -> _MjDataJointViews: ...
+  ) -> _MjDataJointViews:
+    """Look up a joint by name or ID; qpos and qvel are shared slices.
+
+    >>> import mujoco
+    >>> model = mujoco.MjModel.from_xml_string(
+    ...     '<mujoco><worldbody><body><joint name="hinge"/>'
+    ...     '<geom size=".1" mass="1"/>'
+    ...     '</body></worldbody></mujoco>')
+    >>> data = mujoco.MjData(model)
+    >>> data.joint('hinge').qpos[0] = 0.5
+    >>> float(data.qpos[0])
+    0.5
+    """
   @typing.overload
   def joint(self, name: str = '') -> _MjDataJointViews: ...
   @typing.overload
@@ -6011,7 +6081,8 @@ class MjData:
     self,
   ) -> (
     numpy.typing.NDArray[numpy.float32] | numpy.typing.NDArray[numpy.float64]
-  ): ...
+  ):
+    """Actuator controls (nu); a writable input to mj_forward or mj_step."""
   @ctrl.setter
   def ctrl(self, arg1: numpy.typing.ArrayLike) -> None: ...
   @property
@@ -6843,7 +6914,8 @@ class MjData:
     self,
   ) -> (
     numpy.typing.NDArray[numpy.float32] | numpy.typing.NDArray[numpy.float64]
-  ): ...
+  ):
+    """Joint positions (nq); a writable view. Call mj_forward after edits."""
   @qpos.setter
   def qpos(self, arg1: numpy.typing.ArrayLike) -> None: ...
   @property
@@ -6851,7 +6923,8 @@ class MjData:
     self,
   ) -> (
     numpy.typing.NDArray[numpy.float32] | numpy.typing.NDArray[numpy.float64]
-  ): ...
+  ):
+    """Joint velocities (nv); a writable view. Call mj_forward after edits."""
   @qvel.setter
   def qvel(self, arg1: numpy.typing.ArrayLike) -> None: ...
   @property
@@ -7053,7 +7126,8 @@ class MjData:
     self,
   ) -> (
     numpy.typing.NDArray[numpy.float32] | numpy.typing.NDArray[numpy.float64]
-  ): ...
+  ):
+    """World-frame body positions (nbody, 3); refresh with mj_forward."""
   @xpos.setter
   def xpos(self, arg1: numpy.typing.ArrayLike) -> None: ...
   @property
@@ -8445,10 +8519,15 @@ class MjvFigure:
 def _recompile_spec_addr(
   arg0: typing.SupportsInt | typing.SupportsIndex, arg1: MjModel, arg2: MjData
 ) -> tuple: ...
-def mjv_averageCamera(cam1: MjvGLCamera, cam2: MjvGLCamera) -> MjvGLCamera: ...
-def mjv_camera2GLCamera(
-  m: MjModel, d: MjData, cam: MjvCamera
-) -> MjvGLCamera: ...
+def mjv_averageCamera(cam1: MjvGLCamera, cam2: MjvGLCamera) -> MjvGLCamera:
+  """
+  Return the average of two OpenGL cameras.
+  """
+
+def mjv_camera2GLCamera(m: MjModel, d: MjData, cam: MjvCamera) -> MjvGLCamera:
+  """
+  Converts a mjvCamera to a mjvGLCamera.
+  """
 
 class _MjModelActuatorViews:
   @property
@@ -8597,6 +8676,7 @@ class _MjModelActuatorViews:
   def user(self, value: numpy.typing.ArrayLike) -> None: ...
 
 class _MjModelBodyViews:
+  """Named body fields; arrays view the owning MjModel."""
   @property
   def id(self) -> int: ...
   @property
@@ -10139,6 +10219,10 @@ class _MjDataGeomViews:
   def xmat(self, value: numpy.typing.ArrayLike) -> None: ...
 
 class _MjDataJointViews:
+  """Named joint state slices; arrays view the owning MjData.
+
+  qpos and qvel can have different lengths for ball and free joints.
+  """
   @property
   def id(self) -> int: ...
   @property

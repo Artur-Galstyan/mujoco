@@ -60,7 +60,10 @@ class MjrContext:
     arg0: mujoco._structs.MjModel,
     arg1: typing.SupportsInt | typing.SupportsIndex,
   ) -> None: ...
-  def free(self) -> None: ...
+  def free(self) -> None:
+    """
+    Frees resources in current active OpenGL context, sets struct to default.
+    """
   @property
   def auxColor(self) -> numpy.typing.NDArray[numpy.uint32]: ...
   @auxColor.setter
@@ -395,45 +398,89 @@ def mjr_addAux(
   height: typing.SupportsInt | typing.SupportsIndex,
   samples: typing.SupportsInt | typing.SupportsIndex,
   con: MjrContext,
-) -> None: ...
+) -> None:
+  """
+  Add Aux buffer with given index to context; free previous Aux buffer.
+  """
+
 def mjr_blitAux(
   index: typing.SupportsInt | typing.SupportsIndex,
   src: mujoco._structs.MjrRect,
   left: typing.SupportsInt | typing.SupportsIndex,
   bottom: typing.SupportsInt | typing.SupportsIndex,
   con: MjrContext,
-) -> None: ...
+) -> None:
+  """
+  Blit from Aux buffer to con->currentBuffer.
+  """
+
 def mjr_blitBuffer(
   src: mujoco._structs.MjrRect,
   dst: mujoco._structs.MjrRect,
   flg_color: typing.SupportsInt | typing.SupportsIndex,
   flg_depth: typing.SupportsInt | typing.SupportsIndex,
   con: MjrContext,
-) -> None: ...
+) -> None:
+  """
+  Blit from src viewpoint in current framebuffer to dst viewport in other framebuffer. If src, dst have different size and flg_depth==0, color is interpolated with GL_LINEAR.
+  """
+
 def mjr_changeFont(
   fontscale: typing.SupportsInt | typing.SupportsIndex, con: MjrContext
-) -> None: ...
-def mjr_defaultRendererInfo(info: MjrRendererInfo) -> None: ...
+) -> None:
+  """
+  Change font of existing context.
+  """
+
+def mjr_defaultRendererInfo(info: MjrRendererInfo) -> None:
+  """
+  Set default mjrRendererInfo.
+  """
+
 def mjr_drawPixels(
   rgb: typing.Annotated[numpy.typing.NDArray[numpy.uint8], '[m, 1]'] | None,
   depth: typing.Annotated[numpy.typing.NDArray[numpy.float32], '[m, 1]'] | None,
   viewport: mujoco._structs.MjrRect,
   con: MjrContext,
-) -> None: ...
+) -> None:
+  """
+  Draw pixels from client buffer to current OpenGL framebuffer. Viewport is in OpenGL framebuffer; client buffer starts at (0,0).
+  """
+
 def mjr_figure(
   viewport: mujoco._structs.MjrRect,
   fig: mujoco._structs.MjvFigure,
   con: MjrContext,
-) -> None: ...
+) -> None:
+  """
+  Draw 2D figure.
+  """
+
 def mjr_findRect(
   x: typing.SupportsInt | typing.SupportsIndex,
   y: typing.SupportsInt | typing.SupportsIndex,
   nrect: typing.SupportsInt | typing.SupportsIndex,
   rect: mujoco._structs.MjrRect,
-) -> int: ...
-def mjr_finish() -> None: ...
-def mjr_getError() -> int: ...
-def mjr_getRendererInfo(info: MjrRendererInfo) -> None: ...
+) -> int:
+  """
+  Find first rectangle containing mouse, -1: not found.
+  """
+
+def mjr_finish() -> None:
+  """
+  Call glFinish.
+  """
+
+def mjr_getError() -> int:
+  """
+  Call glGetError and return result.
+  """
+
+def mjr_getRendererInfo(info: MjrRendererInfo) -> None:
+  """
+  Get active renderer information.
+  """
+
 def mjr_label(
   viewport: mujoco._structs.MjrRect,
   font: typing.SupportsInt | typing.SupportsIndex,
@@ -446,8 +493,16 @@ def mjr_label(
   gt: typing.SupportsFloat | typing.SupportsIndex,
   bt: typing.SupportsFloat | typing.SupportsIndex,
   con: MjrContext,
-) -> None: ...
-def mjr_maxViewport(con: MjrContext) -> mujoco._structs.MjrRect: ...
+) -> None:
+  """
+  Draw rectangle with centered text.
+  """
+
+def mjr_maxViewport(con: MjrContext) -> mujoco._structs.MjrRect:
+  """
+  Get maximum viewport for active buffer.
+  """
+
 def mjr_overlay(
   font: typing.SupportsInt | typing.SupportsIndex,
   gridpos: typing.SupportsInt | typing.SupportsIndex,
@@ -455,37 +510,69 @@ def mjr_overlay(
   overlay: str,
   overlay2: str,
   con: MjrContext,
-) -> None: ...
+) -> None:
+  """
+  Draw text overlay; font is mjtFont; gridpos is mjtGridPos.
+  """
+
 def mjr_readPixels(
   rgb: typing.Annotated[numpy.typing.ArrayLike, numpy.uint8] | None,
   depth: typing.Annotated[numpy.typing.ArrayLike, numpy.float32] | None,
   viewport: mujoco._structs.MjrRect,
   con: MjrContext,
-) -> None: ...
+) -> None:
+  """
+  Read pixels from current OpenGL framebuffer to client buffer. Viewport is in OpenGL framebuffer; client buffer starts at (0,0).
+  """
+
 def mjr_rectangle(
   viewport: mujoco._structs.MjrRect,
   r: typing.SupportsFloat | typing.SupportsIndex,
   g: typing.SupportsFloat | typing.SupportsIndex,
   b: typing.SupportsFloat | typing.SupportsIndex,
   a: typing.SupportsFloat | typing.SupportsIndex,
-) -> None: ...
+) -> None:
+  """
+  Draw rectangle.
+  """
+
 def mjr_render(
   viewport: mujoco._structs.MjrRect,
   scn: mujoco._structs.MjvScene,
   con: MjrContext,
-) -> None: ...
+) -> None:
+  """
+  Render 3D scene.
+  """
+
 def mjr_resizeOffscreen(
   width: typing.SupportsInt | typing.SupportsIndex,
   height: typing.SupportsInt | typing.SupportsIndex,
   con: MjrContext,
-) -> None: ...
-def mjr_restoreBuffer(con: MjrContext) -> None: ...
+) -> None:
+  """
+  Resize offscreen buffers.
+  """
+
+def mjr_restoreBuffer(con: MjrContext) -> None:
+  """
+  Make con->currentBuffer current again.
+  """
+
 def mjr_setAux(
   index: typing.SupportsInt | typing.SupportsIndex, con: MjrContext
-) -> None: ...
+) -> None:
+  """
+  Set Aux buffer for custom OpenGL rendering (call restoreBuffer when done).
+  """
+
 def mjr_setBuffer(
   framebuffer: typing.SupportsInt | typing.SupportsIndex, con: MjrContext
-) -> None: ...
+) -> None:
+  """
+  Set OpenGL framebuffer for rendering: mjFB_WINDOW or mjFB_OFFSCREEN. If only one buffer is available, set that buffer and ignore framebuffer argument.
+  """
+
 def mjr_text(
   font: typing.SupportsInt | typing.SupportsIndex,
   txt: str,
@@ -495,19 +582,34 @@ def mjr_text(
   r: typing.SupportsFloat | typing.SupportsIndex,
   g: typing.SupportsFloat | typing.SupportsIndex,
   b: typing.SupportsFloat | typing.SupportsIndex,
-) -> None: ...
+) -> None:
+  """
+  Draw text at (x,y) in relative coordinates; font is mjtFont.
+  """
+
 def mjr_uploadHField(
   m: mujoco._structs.MjModel,
   con: MjrContext,
   hfieldid: typing.SupportsInt | typing.SupportsIndex,
-) -> None: ...
+) -> None:
+  """
+  Upload height field to GPU, overwriting previous upload if any.
+  """
+
 def mjr_uploadMesh(
   m: mujoco._structs.MjModel,
   con: MjrContext,
   meshid: typing.SupportsInt | typing.SupportsIndex,
-) -> None: ...
+) -> None:
+  """
+  Upload mesh to GPU, overwriting previous upload if any.
+  """
+
 def mjr_uploadTexture(
   m: mujoco._structs.MjModel,
   con: MjrContext,
   texid: typing.SupportsInt | typing.SupportsIndex,
-) -> None: ...
+) -> None:
+  """
+  Upload texture to GPU, overwriting previous upload if any.
+  """

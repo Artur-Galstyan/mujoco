@@ -21,6 +21,7 @@ from typing import Dict, Optional, Sequence, Tuple, TypeVar, Union
 import zlib
 import jax
 import numpy as np
+from typing_extensions import dataclass_transform
 
 _T = TypeVar('_T')
 
@@ -150,6 +151,7 @@ def dataclass(clz: _T, register_as_pytree: bool) -> _T:
 TNode = TypeVar('TNode', bound='PyTreeNode')
 
 
+@dataclass_transform(frozen_default=True)
 class PyTreeNode:
   """Base class for dataclasses that should act like a JAX pytree node.
 
@@ -160,10 +162,6 @@ class PyTreeNode:
     super().__init_subclass__(**kwargs)
     dataclass(cls, register_as_pytree=register_as_pytree)
 
-  def __init__(self, *args, **kwargs):
-    # stub for pytype
-    raise NotImplementedError
-
   def replace(self: TNode, **overrides) -> TNode:
     # stub for pytype
     raise NotImplementedError
@@ -173,8 +171,8 @@ class PyTreeNode:
     return dataclasses.fields(cls)  # pyrefly: ignore[bad-argument-type]
 
   def tree_replace(
-      self, params: Dict[str, Optional[jax.typing.ArrayLike]]
-  ) -> 'PyTreeNode':
+      self: TNode, params: Dict[str, Optional[jax.typing.ArrayLike]]
+  ) -> TNode:
     new = self
     for k, v in params.items():
       new = _tree_replace(new, k.split('.'), v)
@@ -182,10 +180,10 @@ class PyTreeNode:
 
 
 def _tree_replace(
-    base: PyTreeNode,
+    base: TNode,
     attr: Sequence[str],
     val: Optional[jax.typing.ArrayLike],
-) -> PyTreeNode:
+) -> TNode:
   """Sets attributes in a struct.dataclass with values."""
   if not attr:
     return base

@@ -39,7 +39,7 @@ class RenderContext:
     self._contexts = contexts  # {device_ordinal: warp RenderContext}
     self._default = default  # the first warp RenderContext
 
-  def pytree(self):
+  def pytree(self) -> 'RenderContextPytree':
     """Returns a lightweight JAX pytree for use in jit/vmap."""
     return RenderContextPytree(self.key)
 

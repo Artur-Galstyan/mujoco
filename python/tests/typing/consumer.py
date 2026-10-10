@@ -22,7 +22,7 @@ from numpy import typing as npt
 from typing_extensions import assert_type
 
 import mujoco
-from mujoco import gl_context, renderer, rollout, viewer
+from mujoco import _simulate, gl_context, renderer, rollout, viewer
 from mujoco.rendering.classic import gl_context as classic_gl_context
 from mujoco.rendering.classic import renderer as classic_renderer
 
@@ -69,12 +69,31 @@ def check_types() -> None:
   body = spec.worldbody.add_body(name='body', pos=[0.0, 0.0, 0.0])
   assert_type(body, mujoco.MjsBody)
   assert_type(body.add_geom(name='geom', size=[0.1, 0.0, 0.0]), mujoco.MjsGeom)
-  assert_type(body.add_freejoint(name='joint'), mujoco.MjsJoint)
+  joint = body.add_freejoint(name='joint')
+  assert_type(joint, mujoco.MjsJoint)
   assert_type(spec.body('body'), mujoco.MjsBody | None)
   assert_type(spec.compile(), mujoco.MjModel)
+  assert_type(spec.attach(mujoco.MjSpec(), site='anchor'), mujoco.MjsFrame)
+  assert_type(
+    spec.attach(mujoco.MjSpec(), frame=body.add_frame(name='mount')),
+    mujoco.MjsFrame,
+  )
+  assert_type(spec.attach(mujoco.MjSpec(), frame='mount'), mujoco.MjsFrame)
+  assert_type(spec.copy_back(model), None)
+  assert_type(spec.encode('model.mjb', model=model), int)
+  assert_type(
+    spec.add_tendon().wrap_site('anchor').target,
+    mujoco.MjsSite | mujoco.MjsGeom | mujoco.MjsJoint | None,
+  )
+  assert_type(spec.add_tendon().wrap_site('anchor').coef, float | None)
   element: mujoco.MjStruct = body
   assert_type(model.bind(element).pos, _NumArray)
   assert_type(data.bind(body).xpos, _NumArray)
+  assert_type(model.bind([body]).pos, list[np.float32 | np.float64])
+  assert_type(data.bind([body]).xpos, list[np.float32 | np.float64])
+  assert_type(data.bind([joint]).cdof, list[_NumArray])
+  assert_type(mujoco.MjLogMessage().body, str | None)
+  assert_type(mujoco.MjLogMessage().file, str | None)
   mujoco.to_zip(spec, 'model.zip')
   spec.to_zip('model.zip')
   assert_type(mujoco.from_zip('model.zip'), mujoco.MjSpec)
@@ -97,3 +116,12 @@ def check_types() -> None:
   handle: viewer.Handle = viewer.launch_passive(model, data)
   with handle.lock():
     handle.sync()
+
+
+def check_simulate_types(simulator: _simulate.Simulate) -> None:
+  assert_type(simulator.m, mujoco.MjModel | None)
+  assert_type(simulator.d, mujoco.MjData | None)
+  simulator.set_texts([(0, 0, 'title', 'text')])
+  simulator.set_images(
+    [(mujoco.MjrRect(0, 0, 32, 32), np.zeros((32, 32, 3), dtype=np.uint8))]
+  )

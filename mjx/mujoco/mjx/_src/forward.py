@@ -15,7 +15,7 @@
 """Forward step functions."""
 
 import functools
-from typing import Optional, Sequence
+from typing import Callable, Optional, ParamSpec, Sequence, TypeVar
 
 import jax
 from jax import numpy as jp
@@ -56,9 +56,13 @@ _RK4_A = np.array([
 _RK4_B = np.array([1.0 / 6.0, 1.0 / 3.0, 1.0 / 3.0, 1.0 / 6.0])
 
 
-def named_scope(fn, name: str = ''):
+_P = ParamSpec('_P')
+_R = TypeVar('_R')
+
+
+def named_scope(fn: Callable[_P, _R], name: str = '') -> Callable[_P, _R]:
   @functools.wraps(fn)
-  def wrapper(*args, **kwargs):
+  def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
     with jax.named_scope(name or getattr(fn, '__name__')):
       res = fn(*args, **kwargs)
     return res

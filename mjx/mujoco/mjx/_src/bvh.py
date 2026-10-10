@@ -14,22 +14,21 @@
 # ==============================================================================
 """BVH helpers for MJX."""
 
-from typing import Any
 # pylint: disable=g-importing-member
 from mujoco.mjx._src.types import Data
 from mujoco.mjx._src.types import Impl
 from mujoco.mjx._src.types import Model
 # pylint: enable=g-importing-member
 import mujoco.mjx.warp as mjxw
+from mujoco.mjx.warp.render_context import RenderContextPytree
 
 
-def refit_bvh(m: Model, d: Data, ctx: Any):
+def refit_bvh(m: Model, d: Data, ctx: RenderContextPytree) -> Data:
   """Refit the scene BVH for the current pose."""
   if m.impl == Impl.WARP and d.impl == Impl.WARP and mjxw.WARP_INSTALLED:
-    import mujoco.mjx.warp.render_context as mjxw_rc  # pylint: disable=g-import-not-at-top
     from mujoco.mjx.warp import bvh as mjxw_bvh  # pylint: disable=g-import-not-at-top  # pyrefly: ignore[missing-module-attribute]
 
-    if not isinstance(ctx, mjxw_rc.RenderContextPytree):
+    if not isinstance(ctx, RenderContextPytree):
       raise TypeError(
           f'Expected RenderContextPytree, got {type(ctx).__name__}.'
           ' Use rc.pytree() to get the JAX-compatible handle.'

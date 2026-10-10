@@ -1637,7 +1637,7 @@ def get_data_into(
     m: mujoco.MjModel,
     d: types.Data,
     keepalive_refs: Optional[Dict[int, Any]] = None,
-):
+) -> None:
   """Gets mjx.Data from a device into an existing mujoco.MjData or list."""
   is_batched = isinstance(result, list)
   if is_batched and len(d.qpos.shape) < 2:
@@ -1857,7 +1857,7 @@ def create_render_context(
     nworld: int,
     devices: Optional[Sequence[str]] = None,
     **kwargs,
-):
+) -> mjxw.render_context.RenderContext:
   """Creates a render context.
 
   Args:

@@ -922,7 +922,7 @@ class Model(PyTreeNode):
   names: bytes
   signature: np.uint64
   _sizes: jax.Array
-  _impl: Union[ModelJAX, mjxw_types.ModelWarp]
+  _impl: Union[ModelCPP, ModelJAX, mjxw_types.ModelWarp]
 
   @property
   def impl(self) -> Impl:
@@ -1162,7 +1162,7 @@ class Data(PyTreeNode):
       )
     return val
 
-  def __getitem__(self, key):
+  def __getitem__(self, key) -> 'Data':
     if self.impl == Impl.WARP:
       return jax.tree.map_with_path(
           lambda path, x, k=key: x[k]

@@ -98,6 +98,52 @@ __all__: list[str] = [
 ]
 
 class mjtDisableBit:
+  """
+  Members:
+
+    mjDSBL_CONSTRAINT
+
+    mjDSBL_EQUALITY
+
+    mjDSBL_FRICTIONLOSS
+
+    mjDSBL_LIMIT
+
+    mjDSBL_CONTACT
+
+    mjDSBL_SPRING
+
+    mjDSBL_DAMPER
+
+    mjDSBL_GRAVITY
+
+    mjDSBL_CLAMPCTRL
+
+    mjDSBL_WARMSTART
+
+    mjDSBL_FILTERPARENT
+
+    mjDSBL_ACTUATION
+
+    mjDSBL_REFSAFE
+
+    mjDSBL_SENSOR
+
+    mjDSBL_MIDPHASE
+
+    mjDSBL_EULERDAMP
+
+    mjDSBL_AUTORESET
+
+    mjDSBL_NATIVECCD
+
+    mjDSBL_ISLAND
+
+    mjDSBL_MULTICCD
+
+    mjNDISABLE
+  """
+
   __members__: typing.ClassVar[dict[str, mjtDisableBit]]
   mjDSBL_ACTUATION: typing.ClassVar[mjtDisableBit]
   mjDSBL_AUTORESET: typing.ClassVar[mjtDisableBit]
@@ -252,6 +298,26 @@ class mjtDisableBit:
   def value(self) -> int: ...
 
 class mjtEnableBit:
+  """
+  Members:
+
+    mjENBL_OVERRIDE
+
+    mjENBL_ENERGY
+
+    mjENBL_FWDINV
+
+    mjENBL_INVDISCRETE
+
+    mjENBL_SLEEP
+
+    mjENBL_DIAGEXACT
+
+    mjENBL_IPC
+
+    mjNENABLE
+  """
+
   __members__: typing.ClassVar[dict[str, mjtEnableBit]]
   mjENBL_DIAGEXACT: typing.ClassVar[mjtEnableBit]
   mjENBL_ENERGY: typing.ClassVar[mjtEnableBit]
@@ -393,6 +459,18 @@ class mjtEnableBit:
   def value(self) -> int: ...
 
 class mjtJoint:
+  """
+  Members:
+
+    mjJNT_FREE
+
+    mjJNT_BALL
+
+    mjJNT_SLIDE
+
+    mjJNT_HINGE
+  """
+
   __members__: typing.ClassVar[dict[str, mjtJoint]]
   mjJNT_BALL: typing.ClassVar[mjtJoint]
   mjJNT_FREE: typing.ClassVar[mjtJoint]
@@ -530,6 +608,50 @@ class mjtJoint:
   def value(self) -> int: ...
 
 class mjtGeom:
+  """
+  Members:
+
+    mjGEOM_PLANE
+
+    mjGEOM_HFIELD
+
+    mjGEOM_SPHERE
+
+    mjGEOM_CAPSULE
+
+    mjGEOM_ELLIPSOID
+
+    mjGEOM_CYLINDER
+
+    mjGEOM_BOX
+
+    mjGEOM_MESH
+
+    mjGEOM_SDF
+
+    mjNGEOMTYPES
+
+    mjGEOM_ARROW
+
+    mjGEOM_ARROW1
+
+    mjGEOM_ARROW2
+
+    mjGEOM_LINE
+
+    mjGEOM_LINEBOX
+
+    mjGEOM_FLEX
+
+    mjGEOM_SKIN
+
+    mjGEOM_LABEL
+
+    mjGEOM_TRIANGLE
+
+    mjGEOM_NONE
+  """
+
   __members__: typing.ClassVar[dict[str, mjtGeom]]
   mjGEOM_ARROW: typing.ClassVar[mjtGeom]
   mjGEOM_ARROW1: typing.ClassVar[mjtGeom]
@@ -683,6 +805,14 @@ class mjtGeom:
   def value(self) -> int: ...
 
 class mjtProjection:
+  """
+  Members:
+
+    mjPROJ_PERSPECTIVE
+
+    mjPROJ_ORTHOGRAPHIC
+  """
+
   __members__: typing.ClassVar[dict[str, mjtProjection]]
   mjPROJ_ORTHOGRAPHIC: typing.ClassVar[mjtProjection]
   mjPROJ_PERSPECTIVE: typing.ClassVar[mjtProjection]
@@ -818,6 +948,20 @@ class mjtProjection:
   def value(self) -> int: ...
 
 class mjtCamLight:
+  """
+  Members:
+
+    mjCAMLIGHT_FIXED
+
+    mjCAMLIGHT_TRACK
+
+    mjCAMLIGHT_TRACKCOM
+
+    mjCAMLIGHT_TARGETBODY
+
+    mjCAMLIGHT_TARGETBODYCOM
+  """
+
   __members__: typing.ClassVar[dict[str, mjtCamLight]]
   mjCAMLIGHT_FIXED: typing.ClassVar[mjtCamLight]
   mjCAMLIGHT_TARGETBODY: typing.ClassVar[mjtCamLight]
@@ -956,6 +1100,18 @@ class mjtCamLight:
   def value(self) -> int: ...
 
 class mjtLightType:
+  """
+  Members:
+
+    mjLIGHT_SPOT
+
+    mjLIGHT_DIRECTIONAL
+
+    mjLIGHT_POINT
+
+    mjLIGHT_IMAGE
+  """
+
   __members__: typing.ClassVar[dict[str, mjtLightType]]
   mjLIGHT_DIRECTIONAL: typing.ClassVar[mjtLightType]
   mjLIGHT_IMAGE: typing.ClassVar[mjtLightType]
@@ -1093,6 +1249,16 @@ class mjtLightType:
   def value(self) -> int: ...
 
 class mjtTexture:
+  """
+  Members:
+
+    mjTEXTURE_2D
+
+    mjTEXTURE_CUBE
+
+    mjTEXTURE_SKYBOX
+  """
+
   __members__: typing.ClassVar[dict[str, mjtTexture]]
   mjTEXTURE_2D: typing.ClassVar[mjtTexture]
   mjTEXTURE_CUBE: typing.ClassVar[mjtTexture]
@@ -1229,6 +1395,32 @@ class mjtTexture:
   def value(self) -> int: ...
 
 class mjtTextureRole:
+  """
+  Members:
+
+    mjTEXROLE_USER
+
+    mjTEXROLE_RGB
+
+    mjTEXROLE_OCCLUSION
+
+    mjTEXROLE_ROUGHNESS
+
+    mjTEXROLE_METALLIC
+
+    mjTEXROLE_NORMAL
+
+    mjTEXROLE_OPACITY
+
+    mjTEXROLE_EMISSIVE
+
+    mjTEXROLE_RGBA
+
+    mjTEXROLE_ORM
+
+    mjNTEXROLE
+  """
+
   __members__: typing.ClassVar[dict[str, mjtTextureRole]]
   mjNTEXROLE: typing.ClassVar[mjtTextureRole]
   mjTEXROLE_EMISSIVE: typing.ClassVar[mjtTextureRole]
@@ -1373,6 +1565,16 @@ class mjtTextureRole:
   def value(self) -> int: ...
 
 class mjtColorSpace:
+  """
+  Members:
+
+    mjCOLORSPACE_AUTO
+
+    mjCOLORSPACE_LINEAR
+
+    mjCOLORSPACE_SRGB
+  """
+
   __members__: typing.ClassVar[dict[str, mjtColorSpace]]
   mjCOLORSPACE_AUTO: typing.ClassVar[mjtColorSpace]
   mjCOLORSPACE_LINEAR: typing.ClassVar[mjtColorSpace]
@@ -1509,6 +1711,20 @@ class mjtColorSpace:
   def value(self) -> int: ...
 
 class mjtIntegrator:
+  """
+  Members:
+
+    mjINT_EULER
+
+    mjINT_RK4
+
+    mjINT_IMPLICIT
+
+    mjINT_IMPLICITFAST
+
+    mjINT_DISCRETE
+  """
+
   __members__: typing.ClassVar[dict[str, mjtIntegrator]]
   mjINT_DISCRETE: typing.ClassVar[mjtIntegrator]
   mjINT_EULER: typing.ClassVar[mjtIntegrator]
@@ -1647,6 +1863,14 @@ class mjtIntegrator:
   def value(self) -> int: ...
 
 class mjtCone:
+  """
+  Members:
+
+    mjCONE_PYRAMIDAL
+
+    mjCONE_ELLIPTIC
+  """
+
   __members__: typing.ClassVar[dict[str, mjtCone]]
   mjCONE_ELLIPTIC: typing.ClassVar[mjtCone]
   mjCONE_PYRAMIDAL: typing.ClassVar[mjtCone]
@@ -1782,6 +2006,16 @@ class mjtCone:
   def value(self) -> int: ...
 
 class mjtJacobian:
+  """
+  Members:
+
+    mjJAC_DENSE
+
+    mjJAC_SPARSE
+
+    mjJAC_AUTO
+  """
+
   __members__: typing.ClassVar[dict[str, mjtJacobian]]
   mjJAC_AUTO: typing.ClassVar[mjtJacobian]
   mjJAC_DENSE: typing.ClassVar[mjtJacobian]
@@ -1918,6 +2152,16 @@ class mjtJacobian:
   def value(self) -> int: ...
 
 class mjtSolver:
+  """
+  Members:
+
+    mjSOL_PGS
+
+    mjSOL_CG
+
+    mjSOL_NEWTON
+  """
+
   __members__: typing.ClassVar[dict[str, mjtSolver]]
   mjSOL_CG: typing.ClassVar[mjtSolver]
   mjSOL_NEWTON: typing.ClassVar[mjtSolver]
@@ -2054,6 +2298,26 @@ class mjtSolver:
   def value(self) -> int: ...
 
 class mjtEq:
+  """
+  Members:
+
+    mjEQ_CONNECT
+
+    mjEQ_WELD
+
+    mjEQ_JOINT
+
+    mjEQ_TENDON
+
+    mjEQ_FLEX
+
+    mjEQ_FLEXVERT
+
+    mjEQ_FLEXSTRAIN
+
+    mjEQ_DISTANCE
+  """
+
   __members__: typing.ClassVar[dict[str, mjtEq]]
   mjEQ_CONNECT: typing.ClassVar[mjtEq]
   mjEQ_DISTANCE: typing.ClassVar[mjtEq]
@@ -2195,6 +2459,22 @@ class mjtEq:
   def value(self) -> int: ...
 
 class mjtWrap:
+  """
+  Members:
+
+    mjWRAP_NONE
+
+    mjWRAP_JOINT
+
+    mjWRAP_PULLEY
+
+    mjWRAP_SITE
+
+    mjWRAP_SPHERE
+
+    mjWRAP_CYLINDER
+  """
+
   __members__: typing.ClassVar[dict[str, mjtWrap]]
   mjWRAP_CYLINDER: typing.ClassVar[mjtWrap]
   mjWRAP_JOINT: typing.ClassVar[mjtWrap]
@@ -2334,6 +2614,26 @@ class mjtWrap:
   def value(self) -> int: ...
 
 class mjtTrn:
+  """
+  Members:
+
+    mjTRN_JOINT
+
+    mjTRN_JOINTINPARENT
+
+    mjTRN_SLIDERCRANK
+
+    mjTRN_TENDON
+
+    mjTRN_SITE
+
+    mjTRN_BODY
+
+    mjTRN_SO3
+
+    mjTRN_UNDEFINED
+  """
+
   __members__: typing.ClassVar[dict[str, mjtTrn]]
   mjTRN_BODY: typing.ClassVar[mjtTrn]
   mjTRN_JOINT: typing.ClassVar[mjtTrn]
@@ -2475,6 +2775,26 @@ class mjtTrn:
   def value(self) -> int: ...
 
 class mjtDyn:
+  """
+  Members:
+
+    mjDYN_NONE
+
+    mjDYN_INTEGRATOR
+
+    mjDYN_FILTER
+
+    mjDYN_FILTEREXACT
+
+    mjDYN_MUSCLE
+
+    mjDYN_DCMOTOR
+
+    mjDYN_PID
+
+    mjDYN_USER
+  """
+
   __members__: typing.ClassVar[dict[str, mjtDyn]]
   mjDYN_DCMOTOR: typing.ClassVar[mjtDyn]
   mjDYN_FILTER: typing.ClassVar[mjtDyn]
@@ -2616,6 +2936,24 @@ class mjtDyn:
   def value(self) -> int: ...
 
 class mjtGain:
+  """
+  Members:
+
+    mjGAIN_FIXED
+
+    mjGAIN_AFFINE
+
+    mjGAIN_MUSCLE
+
+    mjGAIN_DCMOTOR
+
+    mjGAIN_SO3
+
+    mjGAIN_PID
+
+    mjGAIN_USER
+  """
+
   __members__: typing.ClassVar[dict[str, mjtGain]]
   mjGAIN_AFFINE: typing.ClassVar[mjtGain]
   mjGAIN_DCMOTOR: typing.ClassVar[mjtGain]
@@ -2756,6 +3094,22 @@ class mjtGain:
   def value(self) -> int: ...
 
 class mjtBias:
+  """
+  Members:
+
+    mjBIAS_NONE
+
+    mjBIAS_AFFINE
+
+    mjBIAS_MUSCLE
+
+    mjBIAS_DCMOTOR
+
+    mjBIAS_SO3
+
+    mjBIAS_USER
+  """
+
   __members__: typing.ClassVar[dict[str, mjtBias]]
   mjBIAS_AFFINE: typing.ClassVar[mjtBias]
   mjBIAS_DCMOTOR: typing.ClassVar[mjtBias]
@@ -2895,6 +3249,14 @@ class mjtBias:
   def value(self) -> int: ...
 
 class mjtCtrlChart:
+  """
+  Members:
+
+    mjCHART_EXPMAP
+
+    mjCHART_QUAT
+  """
+
   __members__: typing.ClassVar[dict[str, mjtCtrlChart]]
   mjCHART_EXPMAP: typing.ClassVar[mjtCtrlChart]
   mjCHART_QUAT: typing.ClassVar[mjtCtrlChart]
@@ -3030,6 +3392,22 @@ class mjtCtrlChart:
   def value(self) -> int: ...
 
 class mjtCtrlInput:
+  """
+  Members:
+
+    mjINPUT_POS
+
+    mjINPUT_VEL
+
+    mjINPUT_FF
+
+    mjINPUT_VOLTAGE
+
+    mjINPUT_NONE
+
+    mjINPUT_PRESSURE
+  """
+
   __members__: typing.ClassVar[dict[str, mjtCtrlInput]]
   mjINPUT_FF: typing.ClassVar[mjtCtrlInput]
   mjINPUT_NONE: typing.ClassVar[mjtCtrlInput]
@@ -3169,6 +3547,70 @@ class mjtCtrlInput:
   def value(self) -> int: ...
 
 class mjtObj:
+  """
+  Members:
+
+    mjOBJ_UNKNOWN
+
+    mjOBJ_BODY
+
+    mjOBJ_XBODY
+
+    mjOBJ_JOINT
+
+    mjOBJ_DOF
+
+    mjOBJ_GEOM
+
+    mjOBJ_SITE
+
+    mjOBJ_CAMERA
+
+    mjOBJ_LIGHT
+
+    mjOBJ_FLEX
+
+    mjOBJ_MESH
+
+    mjOBJ_SKIN
+
+    mjOBJ_HFIELD
+
+    mjOBJ_TEXTURE
+
+    mjOBJ_MATERIAL
+
+    mjOBJ_PAIR
+
+    mjOBJ_EXCLUDE
+
+    mjOBJ_EQUALITY
+
+    mjOBJ_TENDON
+
+    mjOBJ_ACTUATOR
+
+    mjOBJ_SENSOR
+
+    mjOBJ_NUMERIC
+
+    mjOBJ_TEXT
+
+    mjOBJ_TUPLE
+
+    mjOBJ_KEY
+
+    mjOBJ_PLUGIN
+
+    mjNOBJECT
+
+    mjOBJ_FRAME
+
+    mjOBJ_DEFAULT
+
+    mjOBJ_MODEL
+  """
+
   __members__: typing.ClassVar[dict[str, mjtObj]]
   mjNOBJECT: typing.ClassVar[mjtObj]
   mjOBJ_ACTUATOR: typing.ClassVar[mjtObj]
@@ -3332,6 +3774,108 @@ class mjtObj:
   def value(self) -> int: ...
 
 class mjtSensor:
+  """
+  Members:
+
+    mjSENS_TOUCH
+
+    mjSENS_ACCELEROMETER
+
+    mjSENS_VELOCIMETER
+
+    mjSENS_GYRO
+
+    mjSENS_FORCE
+
+    mjSENS_TORQUE
+
+    mjSENS_MAGNETOMETER
+
+    mjSENS_RANGEFINDER
+
+    mjSENS_CAMPROJECTION
+
+    mjSENS_JOINTPOS
+
+    mjSENS_JOINTVEL
+
+    mjSENS_TENDONPOS
+
+    mjSENS_TENDONVEL
+
+    mjSENS_ACTUATORPOS
+
+    mjSENS_ACTUATORVEL
+
+    mjSENS_ACTUATORFRC
+
+    mjSENS_JOINTACTFRC
+
+    mjSENS_TENDONACTFRC
+
+    mjSENS_BALLQUAT
+
+    mjSENS_BALLANGVEL
+
+    mjSENS_JOINTLIMITPOS
+
+    mjSENS_JOINTLIMITVEL
+
+    mjSENS_JOINTLIMITFRC
+
+    mjSENS_TENDONLIMITPOS
+
+    mjSENS_TENDONLIMITVEL
+
+    mjSENS_TENDONLIMITFRC
+
+    mjSENS_FRAMEPOS
+
+    mjSENS_FRAMEQUAT
+
+    mjSENS_FRAMEXAXIS
+
+    mjSENS_FRAMEYAXIS
+
+    mjSENS_FRAMEZAXIS
+
+    mjSENS_FRAMELINVEL
+
+    mjSENS_FRAMEANGVEL
+
+    mjSENS_FRAMELINACC
+
+    mjSENS_FRAMEANGACC
+
+    mjSENS_SUBTREECOM
+
+    mjSENS_SUBTREELINVEL
+
+    mjSENS_SUBTREEANGMOM
+
+    mjSENS_INSIDESITE
+
+    mjSENS_GEOMDIST
+
+    mjSENS_GEOMNORMAL
+
+    mjSENS_GEOMFROMTO
+
+    mjSENS_CONTACT
+
+    mjSENS_E_POTENTIAL
+
+    mjSENS_E_KINETIC
+
+    mjSENS_CLOCK
+
+    mjSENS_TACTILE
+
+    mjSENS_PLUGIN
+
+    mjSENS_USER
+  """
+
   __members__: typing.ClassVar[dict[str, mjtSensor]]
   mjSENS_ACCELEROMETER: typing.ClassVar[mjtSensor]
   mjSENS_ACTUATORFRC: typing.ClassVar[mjtSensor]
@@ -3514,6 +4058,18 @@ class mjtSensor:
   def value(self) -> int: ...
 
 class mjtStage:
+  """
+  Members:
+
+    mjSTAGE_NONE
+
+    mjSTAGE_POS
+
+    mjSTAGE_VEL
+
+    mjSTAGE_ACC
+  """
+
   __members__: typing.ClassVar[dict[str, mjtStage]]
   mjSTAGE_ACC: typing.ClassVar[mjtStage]
   mjSTAGE_NONE: typing.ClassVar[mjtStage]
@@ -3651,6 +4207,18 @@ class mjtStage:
   def value(self) -> int: ...
 
 class mjtDataType:
+  """
+  Members:
+
+    mjDATATYPE_REAL
+
+    mjDATATYPE_POSITIVE
+
+    mjDATATYPE_AXIS
+
+    mjDATATYPE_QUATERNION
+  """
+
   __members__: typing.ClassVar[dict[str, mjtDataType]]
   mjDATATYPE_AXIS: typing.ClassVar[mjtDataType]
   mjDATATYPE_POSITIVE: typing.ClassVar[mjtDataType]
@@ -3788,6 +4356,30 @@ class mjtDataType:
   def value(self) -> int: ...
 
 class mjtConDataField:
+  """
+  Members:
+
+    mjCONDATA_FOUND
+
+    mjCONDATA_FORCE
+
+    mjCONDATA_TORQUE
+
+    mjCONDATA_DIST
+
+    mjCONDATA_POS
+
+    mjCONDATA_NORMAL
+
+    mjCONDATA_TANGENT
+
+    mjCONDATA_LINVEL
+
+    mjCONDATA_ANGVEL
+
+    mjNCONDATA
+  """
+
   __members__: typing.ClassVar[dict[str, mjtConDataField]]
   mjCONDATA_ANGVEL: typing.ClassVar[mjtConDataField]
   mjCONDATA_DIST: typing.ClassVar[mjtConDataField]
@@ -3931,6 +4523,24 @@ class mjtConDataField:
   def value(self) -> int: ...
 
 class mjtRayDataField:
+  """
+  Members:
+
+    mjRAYDATA_DIST
+
+    mjRAYDATA_DIR
+
+    mjRAYDATA_ORIGIN
+
+    mjRAYDATA_POINT
+
+    mjRAYDATA_NORMAL
+
+    mjRAYDATA_DEPTH
+
+    mjNRAYDATA
+  """
+
   __members__: typing.ClassVar[dict[str, mjtRayDataField]]
   mjNRAYDATA: typing.ClassVar[mjtRayDataField]
   mjRAYDATA_DEPTH: typing.ClassVar[mjtRayDataField]
@@ -4071,6 +4681,22 @@ class mjtRayDataField:
   def value(self) -> int: ...
 
 class mjtCamOutBit:
+  """
+  Members:
+
+    mjCAMOUT_RGB
+
+    mjCAMOUT_DEPTH
+
+    mjCAMOUT_DIST
+
+    mjCAMOUT_NORMAL
+
+    mjCAMOUT_SEG
+
+    mjNCAMOUT
+  """
+
   __members__: typing.ClassVar[dict[str, mjtCamOutBit]]
   mjCAMOUT_DEPTH: typing.ClassVar[mjtCamOutBit]
   mjCAMOUT_DIST: typing.ClassVar[mjtCamOutBit]
@@ -4210,6 +4836,20 @@ class mjtCamOutBit:
   def value(self) -> int: ...
 
 class mjtSameFrame:
+  """
+  Members:
+
+    mjSAMEFRAME_NONE
+
+    mjSAMEFRAME_BODY
+
+    mjSAMEFRAME_INERTIA
+
+    mjSAMEFRAME_BODYROT
+
+    mjSAMEFRAME_INERTIAROT
+  """
+
   __members__: typing.ClassVar[dict[str, mjtSameFrame]]
   mjSAMEFRAME_BODY: typing.ClassVar[mjtSameFrame]
   mjSAMEFRAME_BODYROT: typing.ClassVar[mjtSameFrame]
@@ -4348,6 +4988,22 @@ class mjtSameFrame:
   def value(self) -> int: ...
 
 class mjtSleepPolicy:
+  """
+  Members:
+
+    mjSLEEP_AUTO
+
+    mjSLEEP_AUTO_NEVER
+
+    mjSLEEP_AUTO_ALLOWED
+
+    mjSLEEP_NEVER
+
+    mjSLEEP_ALLOWED
+
+    mjSLEEP_INIT
+  """
+
   __members__: typing.ClassVar[dict[str, mjtSleepPolicy]]
   mjSLEEP_ALLOWED: typing.ClassVar[mjtSleepPolicy]
   mjSLEEP_AUTO: typing.ClassVar[mjtSleepPolicy]
@@ -4487,6 +5143,18 @@ class mjtSleepPolicy:
   def value(self) -> int: ...
 
 class mjtLRMode:
+  """
+  Members:
+
+    mjLRMODE_NONE
+
+    mjLRMODE_MUSCLE
+
+    mjLRMODE_MUSCLEUSER
+
+    mjLRMODE_ALL
+  """
+
   __members__: typing.ClassVar[dict[str, mjtLRMode]]
   mjLRMODE_ALL: typing.ClassVar[mjtLRMode]
   mjLRMODE_MUSCLE: typing.ClassVar[mjtLRMode]
@@ -4624,6 +5292,20 @@ class mjtLRMode:
   def value(self) -> int: ...
 
 class mjtFlexSelf:
+  """
+  Members:
+
+    mjFLEXSELF_NONE
+
+    mjFLEXSELF_NARROW
+
+    mjFLEXSELF_BVH
+
+    mjFLEXSELF_SAP
+
+    mjFLEXSELF_AUTO
+  """
+
   __members__: typing.ClassVar[dict[str, mjtFlexSelf]]
   mjFLEXSELF_AUTO: typing.ClassVar[mjtFlexSelf]
   mjFLEXSELF_BVH: typing.ClassVar[mjtFlexSelf]
@@ -4762,6 +5444,18 @@ class mjtFlexSelf:
   def value(self) -> int: ...
 
 class mjtSDFType:
+  """
+  Members:
+
+    mjSDFTYPE_SINGLE
+
+    mjSDFTYPE_INTERSECTION
+
+    mjSDFTYPE_MIDSURFACE
+
+    mjSDFTYPE_COLLISION
+  """
+
   __members__: typing.ClassVar[dict[str, mjtSDFType]]
   mjSDFTYPE_COLLISION: typing.ClassVar[mjtSDFType]
   mjSDFTYPE_INTERSECTION: typing.ClassVar[mjtSDFType]
@@ -4899,6 +5593,48 @@ class mjtSDFType:
   def value(self) -> int: ...
 
 class mjtState:
+  """
+  Members:
+
+    mjSTATE_TIME
+
+    mjSTATE_QPOS
+
+    mjSTATE_QVEL
+
+    mjSTATE_ACT
+
+    mjSTATE_HISTORY
+
+    mjSTATE_WARMSTART
+
+    mjSTATE_CTRL
+
+    mjSTATE_QFRC_APPLIED
+
+    mjSTATE_XFRC_APPLIED
+
+    mjSTATE_EQ_ACTIVE
+
+    mjSTATE_MOCAP_POS
+
+    mjSTATE_MOCAP_QUAT
+
+    mjSTATE_USERDATA
+
+    mjSTATE_PLUGIN
+
+    mjNSTATE
+
+    mjSTATE_PHYSICS
+
+    mjSTATE_FULLPHYSICS
+
+    mjSTATE_USER
+
+    mjSTATE_INTEGRATION
+  """
+
   __members__: typing.ClassVar[dict[str, mjtState]]
   mjNSTATE: typing.ClassVar[mjtState]
   mjSTATE_ACT: typing.ClassVar[mjtState]
@@ -5051,6 +5787,26 @@ class mjtState:
   def value(self) -> int: ...
 
 class mjtConstraint:
+  """
+  Members:
+
+    mjCNSTR_EQUALITY
+
+    mjCNSTR_FRICTION_DOF
+
+    mjCNSTR_FRICTION_TENDON
+
+    mjCNSTR_LIMIT_JOINT
+
+    mjCNSTR_LIMIT_TENDON
+
+    mjCNSTR_CONTACT_FRICTIONLESS
+
+    mjCNSTR_CONTACT_PYRAMIDAL
+
+    mjCNSTR_CONTACT_ELLIPTIC
+  """
+
   __members__: typing.ClassVar[dict[str, mjtConstraint]]
   mjCNSTR_CONTACT_ELLIPTIC: typing.ClassVar[mjtConstraint]
   mjCNSTR_CONTACT_FRICTIONLESS: typing.ClassVar[mjtConstraint]
@@ -5192,6 +5948,20 @@ class mjtConstraint:
   def value(self) -> int: ...
 
 class mjtConstraintState:
+  """
+  Members:
+
+    mjCNSTRSTATE_SATISFIED
+
+    mjCNSTRSTATE_QUADRATIC
+
+    mjCNSTRSTATE_LINEARNEG
+
+    mjCNSTRSTATE_LINEARPOS
+
+    mjCNSTRSTATE_CONE
+  """
+
   __members__: typing.ClassVar[dict[str, mjtConstraintState]]
   mjCNSTRSTATE_CONE: typing.ClassVar[mjtConstraintState]
   mjCNSTRSTATE_LINEARNEG: typing.ClassVar[mjtConstraintState]
@@ -5330,6 +6100,26 @@ class mjtConstraintState:
   def value(self) -> int: ...
 
 class mjtWarning:
+  """
+  Members:
+
+    mjWARN_INERTIA
+
+    mjWARN_CONTACTFULL
+
+    mjWARN_CNSTRFULL
+
+    mjWARN_BADQPOS
+
+    mjWARN_BADQVEL
+
+    mjWARN_BADQACC
+
+    mjWARN_BADCTRL
+
+    mjNWARNING
+  """
+
   __members__: typing.ClassVar[dict[str, mjtWarning]]
   mjNWARNING: typing.ClassVar[mjtWarning]
   mjWARN_BADCTRL: typing.ClassVar[mjtWarning]
@@ -5471,6 +6261,42 @@ class mjtWarning:
   def value(self) -> int: ...
 
 class mjtTimer:
+  """
+  Members:
+
+    mjTIMER_STEP
+
+    mjTIMER_FORWARD
+
+    mjTIMER_INVERSE
+
+    mjTIMER_POSITION
+
+    mjTIMER_VELOCITY
+
+    mjTIMER_ACTUATION
+
+    mjTIMER_CONSTRAINT
+
+    mjTIMER_ADVANCE
+
+    mjTIMER_POS_KINEMATICS
+
+    mjTIMER_POS_INERTIA
+
+    mjTIMER_POS_COLLISION
+
+    mjTIMER_POS_MAKE
+
+    mjTIMER_POS_PROJECT
+
+    mjTIMER_COL_BROAD
+
+    mjTIMER_COL_NARROW
+
+    mjNTIMER
+  """
+
   __members__: typing.ClassVar[dict[str, mjtTimer]]
   mjNTIMER: typing.ClassVar[mjtTimer]
   mjTIMER_ACTUATION: typing.ClassVar[mjtTimer]
@@ -5620,6 +6446,16 @@ class mjtTimer:
   def value(self) -> int: ...
 
 class mjtSleepState:
+  """
+  Members:
+
+    mjS_STATIC
+
+    mjS_ASLEEP
+
+    mjS_AWAKE
+  """
+
   __members__: typing.ClassVar[dict[str, mjtSleepState]]
   mjS_ASLEEP: typing.ClassVar[mjtSleepState]
   mjS_AWAKE: typing.ClassVar[mjtSleepState]
@@ -5756,6 +6592,18 @@ class mjtSleepState:
   def value(self) -> int: ...
 
 class mjtLogLevel:
+  """
+  Members:
+
+    mjLOG_DEBUG
+
+    mjLOG_INFO
+
+    mjLOG_WARNING
+
+    mjLOG_ERROR
+  """
+
   __members__: typing.ClassVar[dict[str, mjtLogLevel]]
   mjLOG_DEBUG: typing.ClassVar[mjtLogLevel]
   mjLOG_ERROR: typing.ClassVar[mjtLogLevel]
@@ -5893,6 +6741,20 @@ class mjtLogLevel:
   def value(self) -> int: ...
 
 class mjtLogTopic:
+  """
+  Members:
+
+    mjTOPIC_NONE
+
+    mjTOPIC_TIME_STP
+
+    mjTOPIC_TIME_CMP
+
+    mjTOPIC_SLEEP
+
+    mjNTOPIC
+  """
+
   __members__: typing.ClassVar[dict[str, mjtLogTopic]]
   mjNTOPIC: typing.ClassVar[mjtLogTopic]
   mjTOPIC_NONE: typing.ClassVar[mjtLogTopic]
@@ -6031,6 +6893,14 @@ class mjtLogTopic:
   def value(self) -> int: ...
 
 class mjtGeomInertia:
+  """
+  Members:
+
+    mjINERTIA_VOLUME
+
+    mjINERTIA_SHELL
+  """
+
   __members__: typing.ClassVar[dict[str, mjtGeomInertia]]
   mjINERTIA_SHELL: typing.ClassVar[mjtGeomInertia]
   mjINERTIA_VOLUME: typing.ClassVar[mjtGeomInertia]
@@ -6166,6 +7036,18 @@ class mjtGeomInertia:
   def value(self) -> int: ...
 
 class mjtMeshInertia:
+  """
+  Members:
+
+    mjMESH_INERTIA_CONVEX
+
+    mjMESH_INERTIA_EXACT
+
+    mjMESH_INERTIA_LEGACY
+
+    mjMESH_INERTIA_SHELL
+  """
+
   __members__: typing.ClassVar[dict[str, mjtMeshInertia]]
   mjMESH_INERTIA_CONVEX: typing.ClassVar[mjtMeshInertia]
   mjMESH_INERTIA_EXACT: typing.ClassVar[mjtMeshInertia]
@@ -6303,6 +7185,40 @@ class mjtMeshInertia:
   def value(self) -> int: ...
 
 class mjtMeshBuiltin:
+  """
+  Members:
+
+    mjMESH_BUILTIN_NONE
+
+    mjMESH_BUILTIN_SPHERE
+
+    mjMESH_BUILTIN_HEMISPHERE
+
+    mjMESH_BUILTIN_CONE
+
+    mjMESH_BUILTIN_SUPERSPHERE
+
+    mjMESH_BUILTIN_SUPERTORUS
+
+    mjMESH_BUILTIN_WEDGE
+
+    mjMESH_BUILTIN_PLATE
+
+    mjMESH_BUILTIN_GRID
+
+    mjMESH_BUILTIN_BOX
+
+    mjMESH_BUILTIN_CYLINDER
+
+    mjMESH_BUILTIN_ELLIPSOID
+
+    mjMESH_BUILTIN_SQUARE
+
+    mjMESH_BUILTIN_DISC
+
+    mjMESH_BUILTIN_CIRCLE
+  """
+
   __members__: typing.ClassVar[dict[str, mjtMeshBuiltin]]
   mjMESH_BUILTIN_BOX: typing.ClassVar[mjtMeshBuiltin]
   mjMESH_BUILTIN_CIRCLE: typing.ClassVar[mjtMeshBuiltin]
@@ -6451,6 +7367,18 @@ class mjtMeshBuiltin:
   def value(self) -> int: ...
 
 class mjtBuiltin:
+  """
+  Members:
+
+    mjBUILTIN_NONE
+
+    mjBUILTIN_GRADIENT
+
+    mjBUILTIN_CHECKER
+
+    mjBUILTIN_FLAT
+  """
+
   __members__: typing.ClassVar[dict[str, mjtBuiltin]]
   mjBUILTIN_CHECKER: typing.ClassVar[mjtBuiltin]
   mjBUILTIN_FLAT: typing.ClassVar[mjtBuiltin]
@@ -6588,6 +7516,18 @@ class mjtBuiltin:
   def value(self) -> int: ...
 
 class mjtMark:
+  """
+  Members:
+
+    mjMARK_NONE
+
+    mjMARK_EDGE
+
+    mjMARK_CROSS
+
+    mjMARK_RANDOM
+  """
+
   __members__: typing.ClassVar[dict[str, mjtMark]]
   mjMARK_CROSS: typing.ClassVar[mjtMark]
   mjMARK_EDGE: typing.ClassVar[mjtMark]
@@ -6725,6 +7665,16 @@ class mjtMark:
   def value(self) -> int: ...
 
 class mjtLimited:
+  """
+  Members:
+
+    mjLIMITED_FALSE
+
+    mjLIMITED_TRUE
+
+    mjLIMITED_AUTO
+  """
+
   __members__: typing.ClassVar[dict[str, mjtLimited]]
   mjLIMITED_AUTO: typing.ClassVar[mjtLimited]
   mjLIMITED_FALSE: typing.ClassVar[mjtLimited]
@@ -6861,6 +7811,16 @@ class mjtLimited:
   def value(self) -> int: ...
 
 class mjtAlignFree:
+  """
+  Members:
+
+    mjALIGNFREE_FALSE
+
+    mjALIGNFREE_TRUE
+
+    mjALIGNFREE_AUTO
+  """
+
   __members__: typing.ClassVar[dict[str, mjtAlignFree]]
   mjALIGNFREE_AUTO: typing.ClassVar[mjtAlignFree]
   mjALIGNFREE_FALSE: typing.ClassVar[mjtAlignFree]
@@ -6997,6 +7957,16 @@ class mjtAlignFree:
   def value(self) -> int: ...
 
 class mjtInertiaFromGeom:
+  """
+  Members:
+
+    mjINERTIAFROMGEOM_FALSE
+
+    mjINERTIAFROMGEOM_TRUE
+
+    mjINERTIAFROMGEOM_AUTO
+  """
+
   __members__: typing.ClassVar[dict[str, mjtInertiaFromGeom]]
   mjINERTIAFROMGEOM_AUTO: typing.ClassVar[mjtInertiaFromGeom]
   mjINERTIAFROMGEOM_FALSE: typing.ClassVar[mjtInertiaFromGeom]
@@ -7133,6 +8103,20 @@ class mjtInertiaFromGeom:
   def value(self) -> int: ...
 
 class mjtOrientation:
+  """
+  Members:
+
+    mjORIENTATION_QUAT
+
+    mjORIENTATION_AXISANGLE
+
+    mjORIENTATION_XYAXES
+
+    mjORIENTATION_ZAXIS
+
+    mjORIENTATION_EULER
+  """
+
   __members__: typing.ClassVar[dict[str, mjtOrientation]]
   mjORIENTATION_AXISANGLE: typing.ClassVar[mjtOrientation]
   mjORIENTATION_EULER: typing.ClassVar[mjtOrientation]
@@ -7271,6 +8255,16 @@ class mjtOrientation:
   def value(self) -> int: ...
 
 class mjtConflict:
+  """
+  Members:
+
+    mjCONFLICT_WARNING
+
+    mjCONFLICT_MERGE
+
+    mjCONFLICT_ERROR
+  """
+
   __members__: typing.ClassVar[dict[str, mjtConflict]]
   mjCONFLICT_ERROR: typing.ClassVar[mjtConflict]
   mjCONFLICT_MERGE: typing.ClassVar[mjtConflict]
@@ -7407,6 +8401,34 @@ class mjtConflict:
   def value(self) -> int: ...
 
 class mjtActuator:
+  """
+  Members:
+
+    mjACTUATOR_GENERAL
+
+    mjACTUATOR_MOTOR
+
+    mjACTUATOR_POSITION
+
+    mjACTUATOR_VELOCITY
+
+    mjACTUATOR_INTVELOCITY
+
+    mjACTUATOR_DAMPER
+
+    mjACTUATOR_CYLINDER
+
+    mjACTUATOR_MUSCLE
+
+    mjACTUATOR_ADHESION
+
+    mjACTUATOR_PID
+
+    mjACTUATOR_ORIENTATION
+
+    mjACTUATOR_DCMOTOR
+  """
+
   __members__: typing.ClassVar[dict[str, mjtActuator]]
   mjACTUATOR_ADHESION: typing.ClassVar[mjtActuator]
   mjACTUATOR_CYLINDER: typing.ClassVar[mjtActuator]
@@ -7552,6 +8574,30 @@ class mjtActuator:
   def value(self) -> int: ...
 
 class mjtCTimer:
+  """
+  Members:
+
+    mjCTIMER_TOTAL
+
+    mjCTIMER_ASSETS
+
+    mjCTIMER_TEXTURE
+
+    mjCTIMER_MESH_LOAD
+
+    mjCTIMER_MESH_HULL
+
+    mjCTIMER_MESH_POLYGON
+
+    mjCTIMER_MESH_INERTIA
+
+    mjCTIMER_MESH_BVH
+
+    mjCTIMER_MESH_OCTREE
+
+    mjNCTIMER
+  """
+
   __members__: typing.ClassVar[dict[str, mjtCTimer]]
   mjCTIMER_ASSETS: typing.ClassVar[mjtCTimer]
   mjCTIMER_MESH_BVH: typing.ClassVar[mjtCTimer]
@@ -7695,6 +8741,18 @@ class mjtCTimer:
   def value(self) -> int: ...
 
 class mjtCatBit:
+  """
+  Members:
+
+    mjCAT_STATIC
+
+    mjCAT_DYNAMIC
+
+    mjCAT_DECOR
+
+    mjCAT_ALL
+  """
+
   __members__: typing.ClassVar[dict[str, mjtCatBit]]
   mjCAT_ALL: typing.ClassVar[mjtCatBit]
   mjCAT_DECOR: typing.ClassVar[mjtCatBit]
@@ -7832,6 +8890,30 @@ class mjtCatBit:
   def value(self) -> int: ...
 
 class mjtMouse:
+  """
+  Members:
+
+    mjMOUSE_NONE
+
+    mjMOUSE_ROTATE_V
+
+    mjMOUSE_ROTATE_H
+
+    mjMOUSE_MOVE_V
+
+    mjMOUSE_MOVE_H
+
+    mjMOUSE_ZOOM
+
+    mjMOUSE_MOVE_V_REL
+
+    mjMOUSE_MOVE_H_REL
+
+    mjMOUSE_TURN_V
+
+    mjMOUSE_TURN_H
+  """
+
   __members__: typing.ClassVar[dict[str, mjtMouse]]
   mjMOUSE_MOVE_H: typing.ClassVar[mjtMouse]
   mjMOUSE_MOVE_H_REL: typing.ClassVar[mjtMouse]
@@ -7975,6 +9057,14 @@ class mjtMouse:
   def value(self) -> int: ...
 
 class mjtPertBit:
+  """
+  Members:
+
+    mjPERT_TRANSLATE
+
+    mjPERT_ROTATE
+  """
+
   __members__: typing.ClassVar[dict[str, mjtPertBit]]
   mjPERT_ROTATE: typing.ClassVar[mjtPertBit]
   mjPERT_TRANSLATE: typing.ClassVar[mjtPertBit]
@@ -8110,6 +9200,18 @@ class mjtPertBit:
   def value(self) -> int: ...
 
 class mjtCamera:
+  """
+  Members:
+
+    mjCAMERA_FREE
+
+    mjCAMERA_TRACKING
+
+    mjCAMERA_FIXED
+
+    mjCAMERA_USER
+  """
+
   __members__: typing.ClassVar[dict[str, mjtCamera]]
   mjCAMERA_FIXED: typing.ClassVar[mjtCamera]
   mjCAMERA_FREE: typing.ClassVar[mjtCamera]
@@ -8247,6 +9349,46 @@ class mjtCamera:
   def value(self) -> int: ...
 
 class mjtLabel:
+  """
+  Members:
+
+    mjLABEL_NONE
+
+    mjLABEL_BODY
+
+    mjLABEL_JOINT
+
+    mjLABEL_GEOM
+
+    mjLABEL_SITE
+
+    mjLABEL_CAMERA
+
+    mjLABEL_LIGHT
+
+    mjLABEL_TENDON
+
+    mjLABEL_ACTUATOR
+
+    mjLABEL_CONSTRAINT
+
+    mjLABEL_FLEX
+
+    mjLABEL_SKIN
+
+    mjLABEL_SELECTION
+
+    mjLABEL_SELPNT
+
+    mjLABEL_CONTACTPOINT
+
+    mjLABEL_CONTACTFORCE
+
+    mjLABEL_ISLAND
+
+    mjNLABEL
+  """
+
   __members__: typing.ClassVar[dict[str, mjtLabel]]
   mjLABEL_ACTUATOR: typing.ClassVar[mjtLabel]
   mjLABEL_BODY: typing.ClassVar[mjtLabel]
@@ -8398,6 +9540,28 @@ class mjtLabel:
   def value(self) -> int: ...
 
 class mjtFrame:
+  """
+  Members:
+
+    mjFRAME_NONE
+
+    mjFRAME_BODY
+
+    mjFRAME_GEOM
+
+    mjFRAME_SITE
+
+    mjFRAME_CAMERA
+
+    mjFRAME_LIGHT
+
+    mjFRAME_CONTACT
+
+    mjFRAME_WORLD
+
+    mjNFRAME
+  """
+
   __members__: typing.ClassVar[dict[str, mjtFrame]]
   mjFRAME_BODY: typing.ClassVar[mjtFrame]
   mjFRAME_CAMERA: typing.ClassVar[mjtFrame]
@@ -8540,6 +9704,74 @@ class mjtFrame:
   def value(self) -> int: ...
 
 class mjtVisFlag:
+  """
+  Members:
+
+    mjVIS_CONVEXHULL
+
+    mjVIS_TEXTURE
+
+    mjVIS_JOINT
+
+    mjVIS_CAMERA
+
+    mjVIS_ACTUATOR
+
+    mjVIS_ACTIVATION
+
+    mjVIS_LIGHT
+
+    mjVIS_TENDON
+
+    mjVIS_RANGEFINDER
+
+    mjVIS_CONSTRAINT
+
+    mjVIS_INERTIA
+
+    mjVIS_SCLINERTIA
+
+    mjVIS_PERTFORCE
+
+    mjVIS_PERTOBJ
+
+    mjVIS_CONTACTPOINT
+
+    mjVIS_ISLAND
+
+    mjVIS_CONTACTFORCE
+
+    mjVIS_CONTACTSPLIT
+
+    mjVIS_TRANSPARENT
+
+    mjVIS_AUTOCONNECT
+
+    mjVIS_COM
+
+    mjVIS_SELECT
+
+    mjVIS_STATIC
+
+    mjVIS_SKIN
+
+    mjVIS_FLEXVERT
+
+    mjVIS_FLEXEDGE
+
+    mjVIS_FLEXFACE
+
+    mjVIS_FLEXSKIN
+
+    mjVIS_BODYBVH
+
+    mjVIS_MESHBVH
+
+    mjVIS_SDFITER
+
+    mjNVISFLAG
+  """
+
   __members__: typing.ClassVar[dict[str, mjtVisFlag]]
   mjNVISFLAG: typing.ClassVar[mjtVisFlag]
   mjVIS_ACTIVATION: typing.ClassVar[mjtVisFlag]
@@ -8705,6 +9937,34 @@ class mjtVisFlag:
   def value(self) -> int: ...
 
 class mjtRndFlag:
+  """
+  Members:
+
+    mjRND_SHADOW
+
+    mjRND_WIREFRAME
+
+    mjRND_REFLECTION
+
+    mjRND_ADDITIVE
+
+    mjRND_SKYBOX
+
+    mjRND_FOG
+
+    mjRND_HAZE
+
+    mjRND_DEPTH
+
+    mjRND_SEGMENT
+
+    mjRND_IDCOLOR
+
+    mjRND_CULL_FACE
+
+    mjNRNDFLAG
+  """
+
   __members__: typing.ClassVar[dict[str, mjtRndFlag]]
   mjNRNDFLAG: typing.ClassVar[mjtRndFlag]
   mjRND_ADDITIVE: typing.ClassVar[mjtRndFlag]
@@ -8850,6 +10110,16 @@ class mjtRndFlag:
   def value(self) -> int: ...
 
 class mjtStereo:
+  """
+  Members:
+
+    mjSTEREO_NONE
+
+    mjSTEREO_QUADBUFFERED
+
+    mjSTEREO_SIDEBYSIDE
+  """
+
   __members__: typing.ClassVar[dict[str, mjtStereo]]
   mjSTEREO_NONE: typing.ClassVar[mjtStereo]
   mjSTEREO_QUADBUFFERED: typing.ClassVar[mjtStereo]
@@ -8986,6 +10256,18 @@ class mjtStereo:
   def value(self) -> int: ...
 
 class mjtPluginCapabilityBit:
+  """
+  Members:
+
+    mjPLUGIN_ACTUATOR
+
+    mjPLUGIN_SENSOR
+
+    mjPLUGIN_PASSIVE
+
+    mjPLUGIN_SDF
+  """
+
   __members__: typing.ClassVar[dict[str, mjtPluginCapabilityBit]]
   mjPLUGIN_ACTUATOR: typing.ClassVar[mjtPluginCapabilityBit]
   mjPLUGIN_PASSIVE: typing.ClassVar[mjtPluginCapabilityBit]
@@ -9123,6 +10405,26 @@ class mjtPluginCapabilityBit:
   def value(self) -> int: ...
 
 class mjtGridPos:
+  """
+  Members:
+
+    mjGRID_TOPLEFT
+
+    mjGRID_TOPRIGHT
+
+    mjGRID_BOTTOMLEFT
+
+    mjGRID_BOTTOMRIGHT
+
+    mjGRID_TOP
+
+    mjGRID_BOTTOM
+
+    mjGRID_LEFT
+
+    mjGRID_RIGHT
+  """
+
   __members__: typing.ClassVar[dict[str, mjtGridPos]]
   mjGRID_BOTTOM: typing.ClassVar[mjtGridPos]
   mjGRID_BOTTOMLEFT: typing.ClassVar[mjtGridPos]
@@ -9264,6 +10566,14 @@ class mjtGridPos:
   def value(self) -> int: ...
 
 class mjtFramebuffer:
+  """
+  Members:
+
+    mjFB_WINDOW
+
+    mjFB_OFFSCREEN
+  """
+
   __members__: typing.ClassVar[dict[str, mjtFramebuffer]]
   mjFB_OFFSCREEN: typing.ClassVar[mjtFramebuffer]
   mjFB_WINDOW: typing.ClassVar[mjtFramebuffer]
@@ -9399,6 +10709,14 @@ class mjtFramebuffer:
   def value(self) -> int: ...
 
 class mjtDepthMap:
+  """
+  Members:
+
+    mjDEPTH_ZERONEAR
+
+    mjDEPTH_ZEROFAR
+  """
+
   __members__: typing.ClassVar[dict[str, mjtDepthMap]]
   mjDEPTH_ZEROFAR: typing.ClassVar[mjtDepthMap]
   mjDEPTH_ZERONEAR: typing.ClassVar[mjtDepthMap]
@@ -9534,6 +10852,22 @@ class mjtDepthMap:
   def value(self) -> int: ...
 
 class mjtFontScale:
+  """
+  Members:
+
+    mjFONTSCALE_50
+
+    mjFONTSCALE_100
+
+    mjFONTSCALE_150
+
+    mjFONTSCALE_200
+
+    mjFONTSCALE_250
+
+    mjFONTSCALE_300
+  """
+
   __members__: typing.ClassVar[dict[str, mjtFontScale]]
   mjFONTSCALE_100: typing.ClassVar[mjtFontScale]
   mjFONTSCALE_150: typing.ClassVar[mjtFontScale]
@@ -9673,6 +11007,16 @@ class mjtFontScale:
   def value(self) -> int: ...
 
 class mjtFont:
+  """
+  Members:
+
+    mjFONT_NORMAL
+
+    mjFONT_SHADOW
+
+    mjFONT_BIG
+  """
+
   __members__: typing.ClassVar[dict[str, mjtFont]]
   mjFONT_BIG: typing.ClassVar[mjtFont]
   mjFONT_NORMAL: typing.ClassVar[mjtFont]
@@ -9809,6 +11153,24 @@ class mjtFont:
   def value(self) -> int: ...
 
 class mjrPixelFormat:
+  """
+  Members:
+
+    mjPIXEL_FORMAT_UNKNOWN
+
+    mjPIXEL_FORMAT_R8
+
+    mjPIXEL_FORMAT_RGB8
+
+    mjPIXEL_FORMAT_RGBA8
+
+    mjPIXEL_FORMAT_R32F
+
+    mjPIXEL_FORMAT_DEPTH32F
+
+    mjPIXEL_FORMAT_KTX
+  """
+
   __members__: typing.ClassVar[dict[str, mjrPixelFormat]]
   mjPIXEL_FORMAT_DEPTH32F: typing.ClassVar[mjrPixelFormat]
   mjPIXEL_FORMAT_KTX: typing.ClassVar[mjrPixelFormat]
@@ -9949,6 +11311,20 @@ class mjrPixelFormat:
   def value(self) -> int: ...
 
 class mjrVertexAttributeUsage:
+  """
+  Members:
+
+    mjVERTEX_ATTRIBUTE_USAGE_POSITION
+
+    mjVERTEX_ATTRIBUTE_USAGE_NORMAL
+
+    mjVERTEX_ATTRIBUTE_USAGE_TANGENTS
+
+    mjVERTEX_ATTRIBUTE_USAGE_UV
+
+    mjVERTEX_ATTRIBUTE_USAGE_COLOR
+  """
+
   __members__: typing.ClassVar[dict[str, mjrVertexAttributeUsage]]
   mjVERTEX_ATTRIBUTE_USAGE_COLOR: typing.ClassVar[mjrVertexAttributeUsage]
   mjVERTEX_ATTRIBUTE_USAGE_NORMAL: typing.ClassVar[mjrVertexAttributeUsage]
@@ -10087,6 +11463,18 @@ class mjrVertexAttributeUsage:
   def value(self) -> int: ...
 
 class mjrVertexAttributeType:
+  """
+  Members:
+
+    mjVERTEX_ATTRIBUTE_TYPE_FLOAT2
+
+    mjVERTEX_ATTRIBUTE_TYPE_FLOAT3
+
+    mjVERTEX_ATTRIBUTE_TYPE_FLOAT4
+
+    mjVERTEX_ATTRIBUTE_TYPE_UBYTE4
+  """
+
   __members__: typing.ClassVar[dict[str, mjrVertexAttributeType]]
   mjVERTEX_ATTRIBUTE_TYPE_FLOAT2: typing.ClassVar[mjrVertexAttributeType]
   mjVERTEX_ATTRIBUTE_TYPE_FLOAT3: typing.ClassVar[mjrVertexAttributeType]
@@ -10224,6 +11612,14 @@ class mjrVertexAttributeType:
   def value(self) -> int: ...
 
 class mjrIndexType:
+  """
+  Members:
+
+    mjINDEX_TYPE_U16
+
+    mjINDEX_TYPE_U32
+  """
+
   __members__: typing.ClassVar[dict[str, mjrIndexType]]
   mjINDEX_TYPE_U16: typing.ClassVar[mjrIndexType]
   mjINDEX_TYPE_U32: typing.ClassVar[mjrIndexType]
@@ -10359,6 +11755,14 @@ class mjrIndexType:
   def value(self) -> int: ...
 
 class mjrMeshPrimitiveType:
+  """
+  Members:
+
+    mjMESH_PRIMITIVE_TYPE_TRIANGLES
+
+    mjMESH_PRIMITIVE_TYPE_LINES
+  """
+
   __members__: typing.ClassVar[dict[str, mjrMeshPrimitiveType]]
   mjMESH_PRIMITIVE_TYPE_LINES: typing.ClassVar[mjrMeshPrimitiveType]
   mjMESH_PRIMITIVE_TYPE_TRIANGLES: typing.ClassVar[mjrMeshPrimitiveType]
@@ -10494,6 +11898,18 @@ class mjrMeshPrimitiveType:
   def value(self) -> int: ...
 
 class mjtButton:
+  """
+  Members:
+
+    mjBUTTON_NONE
+
+    mjBUTTON_LEFT
+
+    mjBUTTON_RIGHT
+
+    mjBUTTON_MIDDLE
+  """
+
   __members__: typing.ClassVar[dict[str, mjtButton]]
   mjBUTTON_LEFT: typing.ClassVar[mjtButton]
   mjBUTTON_MIDDLE: typing.ClassVar[mjtButton]
@@ -10631,6 +12047,28 @@ class mjtButton:
   def value(self) -> int: ...
 
 class mjtEvent:
+  """
+  Members:
+
+    mjEVENT_NONE
+
+    mjEVENT_MOVE
+
+    mjEVENT_PRESS
+
+    mjEVENT_RELEASE
+
+    mjEVENT_SCROLL
+
+    mjEVENT_KEY
+
+    mjEVENT_RESIZE
+
+    mjEVENT_REDRAW
+
+    mjEVENT_FILESDROP
+  """
+
   __members__: typing.ClassVar[dict[str, mjtEvent]]
   mjEVENT_FILESDROP: typing.ClassVar[mjtEvent]
   mjEVENT_KEY: typing.ClassVar[mjtEvent]
@@ -10773,6 +12211,44 @@ class mjtEvent:
   def value(self) -> int: ...
 
 class mjtItem:
+  """
+  Members:
+
+    mjITEM_END
+
+    mjITEM_SECTION
+
+    mjITEM_SEPARATOR
+
+    mjITEM_STATIC
+
+    mjITEM_BUTTON
+
+    mjITEM_CHECKINT
+
+    mjITEM_CHECKBYTE
+
+    mjITEM_RADIO
+
+    mjITEM_RADIOLINE
+
+    mjITEM_SELECT
+
+    mjITEM_SLIDERINT
+
+    mjITEM_SLIDERNUM
+
+    mjITEM_EDITINT
+
+    mjITEM_EDITNUM
+
+    mjITEM_EDITFLOAT
+
+    mjITEM_EDITTXT
+
+    mjNITEM
+  """
+
   __members__: typing.ClassVar[dict[str, mjtItem]]
   mjITEM_BUTTON: typing.ClassVar[mjtItem]
   mjITEM_CHECKBYTE: typing.ClassVar[mjtItem]
@@ -10923,6 +12399,16 @@ class mjtItem:
   def value(self) -> int: ...
 
 class mjtSection:
+  """
+  Members:
+
+    mjSECT_CLOSED
+
+    mjSECT_OPEN
+
+    mjSECT_FIXED
+  """
+
   __members__: typing.ClassVar[dict[str, mjtSection]]
   mjSECT_CLOSED: typing.ClassVar[mjtSection]
   mjSECT_FIXED: typing.ClassVar[mjtSection]

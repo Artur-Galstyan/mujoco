@@ -34,6 +34,7 @@ dependencies = [
     "mujoco>=3.15.1.dev0",
     "scipy",
     "trimesh",
+    "typing-extensions>=4.5",
 ]
 
 [project.optional-dependencies]
@@ -83,3 +84,6 @@ norecursedirs = [
 
 [tool.setuptools.packages.find]
 include = ["mujoco*"]
+
+[tool.setuptools.package-data]
+"mujoco.mjx" = ["py.typed"]

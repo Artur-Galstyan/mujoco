@@ -72,9 +72,29 @@ __all__: list[str] = [
   'MjsTuple',
   'MjsWrap',
 ]
+_ScalarOrArray: typing.TypeAlias = (
+  float
+  | collections.abc.Sequence[float]
+  | collections.abc.Set[float]
+  | collections.abc.Iterator[float]
+  | numpy.typing.NDArray[numpy.number]
+  | numpy.typing.NDArray[numpy.bool_]
+)
 
 class MjSpec:
-  assets: dict
+  """Editable model description; compile it to create an MjModel.
+
+  Edit the spec before compilation, then create MjData from the compiled model.
+
+  >>> import mujoco
+  >>> spec = mujoco.MjSpec.from_string('<mujoco/>')
+  >>> _ = spec.worldbody.add_body(name='link').add_geom(size=[0.1, 0, 0], mass=1)
+  >>> model = spec.compile()
+  >>> model.nbody
+  2
+  """
+
+  assets: dict[str, str | bytes]
   authored: MjsAuthored
   comment: str
   compiler: MjsCompiler
@@ -92,18 +112,60 @@ class MjSpec:
   def from_file(
     filename: str,
     include: collections.abc.Mapping[str, bytes] | None = None,
-    assets: dict | None = None,
+    assets: dict[str, str | bytes] | None = None,
     vfs: MjVfs | None = None,
-  ) -> MjSpec: ...
+  ) -> MjSpec:
+    """
+    Creates a spec from an XML file.
+
+    Parameters
+    ----------
+    filename : str
+        Path to the XML file.
+    include : dict, optional
+        A dictionary of xml files included by the model. The keys are file names
+        and the values are file contents.
+    assets : dict, optional
+        A dictionary of assets to be used by the spec. The keys are asset names
+        and the values are asset contents.
+    vfs : MjVfs, optional
+        A VFS to use for resolving includes and assets. Cannot be used with
+        include or assets.
+    """
   @staticmethod
   def from_string(
     xml: str,
     include: collections.abc.Mapping[str, bytes] | None = None,
-    assets: dict | None = None,
+    assets: dict[str, str | bytes] | None = None,
     vfs: MjVfs | None = None,
-  ) -> MjSpec: ...
+  ) -> MjSpec:
+    """
+    Creates a spec from an XML string.
+
+    Parameters
+    ----------
+    xml : str
+        XML string.
+    include : dict, optional
+        A dictionary of xml files included by the model. The keys are file names
+        and the values are file contents.
+    assets : dict, optional
+        A dictionary of assets to be used by the spec. The keys are asset names
+        and the values are asset contents.
+    vfs : MjVfs, optional
+        A VFS to use for resolving includes and assets. Cannot be used with
+        include or assets.
+    """
   @staticmethod
-  def from_zip(file: str | typing.IO[bytes]) -> MjSpec: ...
+  def from_zip(file: str | typing.IO[bytes]) -> MjSpec:
+    """
+    Reads a zip file and returns an MjSpec.
+
+    Args:
+      file: The path to the file to read from or the file object to read from.
+    Returns:
+      An MjSpec object.
+    """
   @staticmethod
   @typing.overload
   def resolve_orientation(
@@ -117,7 +179,14 @@ class MjSpec:
     orientation: MjsOrientation,
     sequence: MjCharVec | None = None,
   ) -> typing.Annotated[list[float], 'FixedSize(4)']: ...
-  def to_zip(self, file: str | typing.IO[bytes]) -> None: ...
+  def to_zip(self, file: str | typing.IO[bytes]) -> None:
+    """
+    Converts an MjSpec to a zip file.
+
+    Args:
+      spec: The mjSpec to save to a file.
+      file: The path to the file to save to or the file object to write to.
+    """
   def __init__(self) -> None: ...
   def activate_plugin(self, name: str) -> None: ...
   def actuator(self, arg0: str) -> MjsActuator | None: ...
@@ -164,7 +233,7 @@ class MjSpec:
     ]
     | None = None,
     inheritrange: typing.SupportsFloat | typing.SupportsIndex | None = None,
-    damping: typing.Any | None = None,
+    damping: _ScalarOrArray | None = None,
     armature: typing.SupportsFloat | typing.SupportsIndex | None = None,
     ctrllimited: typing.SupportsInt | typing.SupportsIndex | None = None,
     ctrlrange: collections.abc.Sequence[
@@ -191,7 +260,48 @@ class MjSpec:
     | None = None,
     plugin: MjsPlugin | None = None,
     info: str | None = None,
-  ) -> MjsActuator: ...
+  ) -> MjsActuator:
+    """
+    Add actuator to spec.
+
+    Args:
+      name: str
+      type: int
+      gaintype: int
+      gainprm: list[float]
+      biastype: int
+      biasprm: list[float]
+      dyntype: int
+      dynprm: list[float]
+      actdim: int
+      ctrlspec: int
+      velrange: list[float]
+      ffrange: list[float]
+      actearly: int
+      trntype: int
+      gear: list[float]
+      target: str
+      refsite: str
+      slidersite: str
+      cranklength: float
+      lengthrange: list[float]
+      inheritrange: float
+      damping: Optional[list[float]]
+      armature: float
+      ctrllimited: int
+      ctrlrange: list[float]
+      forcelimited: int
+      forcerange: list[float]
+      actlimited: int
+      actrange: list[float]
+      group: int
+      nsample: int
+      interp: int
+      delay: float
+      userdata: list[float]
+      plugin: MjsPlugin
+      info: str
+    """
   def add_default(self, arg0: str, arg1: MjsDefault) -> MjsDefault: ...
   def add_equality(
     self,
@@ -213,14 +323,38 @@ class MjSpec:
     ]
     | None = None,
     info: str | None = None,
-  ) -> MjsEquality: ...
+  ) -> MjsEquality:
+    """
+    Add equality to spec.
+
+    Args:
+      name: str
+      type: int
+      data: list[float]
+      active: int
+      name1: str
+      name2: str
+      objtype: int
+      solref: list[float]
+      solimp: list[float]
+      info: str
+    """
   def add_exclude(
     self,
     name: str | None = None,
     bodyname1: str | None = None,
     bodyname2: str | None = None,
     info: str | None = None,
-  ) -> MjsExclude: ...
+  ) -> MjsExclude:
+    """
+    Add exclude to spec.
+
+    Args:
+      name: str
+      bodyname1: str
+      bodyname2: str
+      info: str
+    """
   def add_flex(
     self,
     name: str | None = None,
@@ -245,7 +379,7 @@ class MjSpec:
     gap: typing.SupportsFloat | typing.SupportsIndex | None = None,
     dim: typing.SupportsInt | typing.SupportsIndex | None = None,
     radius: typing.SupportsFloat | typing.SupportsIndex | None = None,
-    size: typing.Any | None = None,
+    size: _ScalarOrArray | None = None,
     flatskin: typing.SupportsInt | typing.SupportsIndex | None = None,
     selfcollide: typing.SupportsInt | typing.SupportsIndex | None = None,
     passive: typing.SupportsInt | typing.SupportsIndex | None = None,
@@ -284,7 +418,51 @@ class MjSpec:
     ]
     | None = None,
     info: str | None = None,
-  ) -> MjsFlex: ...
+  ) -> MjsFlex:
+    """
+    Add flex to spec.
+
+    Args:
+      name: str
+      contype: int
+      conaffinity: int
+      condim: int
+      priority: int
+      friction: list[float]
+      solmix: float
+      solref: list[float]
+      solimp: list[float]
+      margin: float
+      gap: float
+      dim: int
+      radius: float
+      size: Optional[list[float]]
+      flatskin: int
+      selfcollide: int
+      passive: int
+      activelayers: int
+      group: int
+      edgestiffness: float
+      edgedamping: float
+      rgba: list[float]
+      material: str
+      young: float
+      poisson: float
+      damping: float
+      thickness: float
+      elastic2d: int
+      elastic3d: int
+      cellcount: list[float]
+      order: int
+      nodebody: list[str]
+      vertbody: list[str]
+      node: list[float]
+      vert: list[float]
+      elem: list[int]
+      texcoord: list[float]
+      elemtexcoord: list[int]
+      info: str
+    """
   def add_hfield(
     self,
     name: str | None = None,
@@ -299,7 +477,20 @@ class MjSpec:
     ]
     | None = None,
     info: str | None = None,
-  ) -> MjsHField: ...
+  ) -> MjsHField:
+    """
+    Add hfield to spec.
+
+    Args:
+      name: str
+      content_type: str
+      file: str
+      size: list[float]
+      nrow: int
+      ncol: int
+      userdata: list[float]
+      info: str
+    """
   def add_key(
     self,
     name: str | None = None,
@@ -317,7 +508,21 @@ class MjSpec:
     ctrl: collections.abc.Sequence[typing.SupportsFloat | typing.SupportsIndex]
     | None = None,
     info: str | None = None,
-  ) -> MjsKey: ...
+  ) -> MjsKey:
+    """
+    Add key to spec.
+
+    Args:
+      name: str
+      time: float
+      qpos: list[float]
+      qvel: list[float]
+      act: list[float]
+      mpos: list[float]
+      mquat: list[float]
+      ctrl: list[float]
+      info: str
+    """
   def add_material(
     self,
     default: MjsDefault | None = None,
@@ -337,7 +542,24 @@ class MjSpec:
     rgba: collections.abc.Sequence[typing.SupportsFloat | typing.SupportsIndex]
     | None = None,
     info: str | None = None,
-  ) -> MjsMaterial: ...
+  ) -> MjsMaterial:
+    """
+    Add material to spec.
+
+    Args:
+      name: str
+      textures: list[str]
+      texuniform: int
+      texrepeat: list[float]
+      emission: float
+      specular: float
+      shininess: float
+      reflectance: float
+      metallic: float
+      roughness: float
+      rgba: list[float]
+      info: str
+    """
   def add_mesh(
     self,
     default: MjsDefault | None = None,
@@ -392,7 +614,34 @@ class MjSpec:
     material: str | None = None,
     octree_maxdepth: typing.SupportsInt | typing.SupportsIndex | None = None,
     info: str | None = None,
-  ) -> MjsMesh: ...
+  ) -> MjsMesh:
+    """
+    Add mesh to spec.
+
+    Args:
+      name: str
+      content_type: str
+      file: str
+      refpos: list[float]
+      refquat: list[float]
+      scale: list[float]
+      inertia: int
+      smoothnormal: int
+      needsdf: int
+      maxhullvert: int
+      uservert: list[float]
+      usernormal: list[float]
+      usertexcoord: list[float]
+      userface: list[int]
+      userfacenormal: list[int]
+      userfacetexcoord: list[int]
+      usernode: list[float]
+      usertet: list[int]
+      plugin: MjsPlugin
+      material: str
+      octree_maxdepth: int
+      info: str
+    """
   def add_numeric(
     self,
     name: str | None = None,
@@ -400,7 +649,16 @@ class MjSpec:
     | None = None,
     size: typing.SupportsInt | typing.SupportsIndex | None = None,
     info: str | None = None,
-  ) -> MjsNumeric: ...
+  ) -> MjsNumeric:
+    """
+    Add numeric to spec.
+
+    Args:
+      name: str
+      data: list[float]
+      size: int
+      info: str
+    """
   def add_pair(
     self,
     default: MjsDefault | None = None,
@@ -428,14 +686,40 @@ class MjSpec:
     ]
     | None = None,
     info: str | None = None,
-  ) -> MjsPair: ...
+  ) -> MjsPair:
+    """
+    Add pair to spec.
+
+    Args:
+      name: str
+      geomname1: str
+      geomname2: str
+      condim: int
+      solref: list[float]
+      solreffriction: list[float]
+      solimp: list[float]
+      margin: float
+      gap: float
+      adhesion: float
+      friction: list[float]
+      info: str
+    """
   def add_plugin(
     self,
     name: str | None = None,
     plugin_name: str | None = None,
     active: typing.SupportsInt | typing.SupportsIndex | None = None,
     info: str | None = None,
-  ) -> MjsPlugin: ...
+  ) -> MjsPlugin:
+    """
+    Add plugin to spec.
+
+    Args:
+      name: str
+      plugin_name: str
+      active: int
+      info: str
+    """
   def add_sensor(
     self,
     name: str | None = None,
@@ -466,7 +750,31 @@ class MjSpec:
     | None = None,
     plugin: MjsPlugin | None = None,
     info: str | None = None,
-  ) -> MjsSensor: ...
+  ) -> MjsSensor:
+    """
+    Add sensor to spec.
+
+    Args:
+      name: str
+      type: int
+      objtype: int
+      objname: str
+      reftype: int
+      refname: str
+      intprm: list[float]
+      datatype: int
+      needstage: int
+      dim: int
+      cutoff: float
+      noise: float
+      nsample: int
+      interp: int
+      delay: float
+      interval: list[float]
+      userdata: list[float]
+      plugin: MjsPlugin
+      info: str
+    """
   def add_skin(
     self,
     name: str | None = None,
@@ -502,17 +810,37 @@ class MjSpec:
     ]
     | None = None,
     info: str | None = None,
-  ) -> MjsSkin: ...
+  ) -> MjsSkin:
+    """
+    Add skin to spec.
+
+    Args:
+      name: str
+      file: str
+      material: str
+      rgba: list[float]
+      inflate: float
+      group: int
+      vert: list[float]
+      texcoord: list[float]
+      face: list[int]
+      bodyname: list[str]
+      bindpos: list[float]
+      bindquat: list[float]
+      vertid: list[list[int]]
+      vertweight: list[list[float]]
+      info: str
+    """
   def add_tendon(
     self,
     default: MjsDefault | None = None,
     name: str | None = None,
-    stiffness: typing.Any | None = None,
+    stiffness: _ScalarOrArray | None = None,
     springlength: collections.abc.Sequence[
       typing.SupportsFloat | typing.SupportsIndex
     ]
     | None = None,
-    damping: typing.Any | None = None,
+    damping: _ScalarOrArray | None = None,
     frictionloss: typing.SupportsFloat | typing.SupportsIndex | None = None,
     solref_friction: collections.abc.Sequence[
       typing.SupportsFloat | typing.SupportsIndex
@@ -550,13 +878,47 @@ class MjSpec:
     ]
     | None = None,
     info: str | None = None,
-  ) -> MjsTendon: ...
+  ) -> MjsTendon:
+    """
+    Add tendon to spec.
+
+    Args:
+      name: str
+      stiffness: Optional[list[float]]
+      springlength: list[float]
+      damping: Optional[list[float]]
+      frictionloss: float
+      solref_friction: list[float]
+      solimp_friction: list[float]
+      armature: float
+      limited: int
+      actfrclimited: int
+      range: list[float]
+      actfrcrange: list[float]
+      margin: float
+      solref_limit: list[float]
+      solimp_limit: list[float]
+      material: str
+      width: float
+      rgba: list[float]
+      group: int
+      userdata: list[float]
+      info: str
+    """
   def add_text(
     self,
     name: str | None = None,
     data: str | None = None,
     info: str | None = None,
-  ) -> MjsText: ...
+  ) -> MjsText:
+    """
+    Add text to spec.
+
+    Args:
+      name: str
+      data: str
+      info: str
+    """
   def add_texture(
     self,
     name: str | None = None,
@@ -582,14 +944,40 @@ class MjSpec:
       typing.SupportsFloat | typing.SupportsIndex
     ]
     | None = None,
-    gridlayout: typing.Any = None,
+    gridlayout: str | list[str | bytes] | None = None,
     cubefiles: collections.abc.Sequence[str] | None = None,
     data: collections.abc.Sequence[typing.SupportsInt | typing.SupportsIndex]
     | None = None,
     hflip: typing.SupportsInt | typing.SupportsIndex | None = None,
     vflip: typing.SupportsInt | typing.SupportsIndex | None = None,
     info: str | None = None,
-  ) -> MjsTexture: ...
+  ) -> MjsTexture:
+    """
+    Add texture to spec.
+
+    Args:
+      name: str
+      type: int
+      colorspace: int
+      builtin: int
+      mark: int
+      rgb1: list[float]
+      rgb2: list[float]
+      markrgb: list[float]
+      random: float
+      height: int
+      width: int
+      nchannel: int
+      content_type: str
+      file: str
+      gridsize: list[float]
+      gridlayout: str | list[str]
+      cubefiles: list[str]
+      data: list[int]
+      hflip: int
+      vflip: int
+      info: str
+    """
   def add_tuple(
     self,
     name: str | None = None,
@@ -601,21 +989,60 @@ class MjSpec:
     ]
     | None = None,
     info: str | None = None,
-  ) -> MjsTuple: ...
-  def adopt_inertial(self, body: MjsBody, vfs: MjVfs | None = None) -> None: ...
+  ) -> MjsTuple:
+    """
+    Add tuple to spec.
+
+    Args:
+      name: str
+      objtype: list[int]
+      objname: list[str]
+      objprm: list[float]
+      info: str
+    """
+  def adopt_inertial(self, body: MjsBody, vfs: MjVfs | None = None) -> None:
+    """
+    Makes the inertial which compilation infers for a body part of the spec.
+
+    The mass, inertia and inertial frame calculated from the geoms of the body
+    become its explicit inertial, and no longer follow changes to the geoms.
+    Assets are read as in compile().
+
+    Parameters
+    ----------
+    body : MjsBody
+        A body of this spec.
+    vfs : MjVfs, optional
+        A VFS to read assets from. Cannot be used with assets.
+    """
   def attach(
     self,
     child: MjSpec,
     prefix: str | None = None,
     suffix: str | None = None,
-    site: typing.Any | None = None,
-    frame: typing.Any | None = None,
+    site: str | MjsSite | None = None,
+    frame: str | MjsFrame | None = None,
   ) -> MjsFrame: ...
   def body(self, arg0: str) -> MjsBody | None: ...
   def camera(self, arg0: str) -> MjsCamera | None: ...
-  def compile(self, vfs: MjVfs | None = None) -> mujoco._structs.MjModel: ...
+  def compile(self, vfs: MjVfs | None = None) -> mujoco._structs.MjModel:
+    """Compile this spec to an MjModel; create MjData for its state."""
   def copy(self) -> MjSpec: ...
-  def copy_back(self, model: typing.Any) -> None: ...
+  def copy_back(self, model: mujoco._structs.MjModel) -> None:
+    """
+    Writes to the spec what was changed in a model compiled from it.
+
+    Each value of the model which is not the one that the spec was compiled to
+    is written to the spec as what compiles to it, so that it is in the models
+    which are compiled from the spec afterwards and in the XML which is saved.
+    Raises ValueError, and writes nothing, if a change cannot be expressed in
+    the spec.
+
+    Parameters
+    ----------
+    model : MjModel
+        The model which was last compiled from this spec.
+    """
   @typing.overload
   def delete(self, arg0: MjsDefault) -> None: ...
   @typing.overload
@@ -666,11 +1093,25 @@ class MjSpec:
   def delete(self, arg0: MjsTuple) -> None: ...
   @typing.overload
   def delete(self, arg0: MjsPlugin) -> None: ...
-  def discard_visual(self, vfs: MjVfs | None = None) -> None: ...
+  def discard_visual(self, vfs: MjVfs | None = None) -> None:
+    """
+    Discards the visual elements of the spec.
+
+    All materials and textures are discarded, as are the geoms which do not
+    collide and are not referenced, and the meshes which are then not used.
+    Objects referring to the discarded elements must not be used afterwards.
+    Assets are read as in compile(), and only if body inertia is inferred from
+    a discarded geom.
+
+    Parameters
+    ----------
+    vfs : MjVfs, optional
+        A VFS to read assets from. Cannot be used with assets.
+    """
   def encode(
     self,
     filename: str,
-    model: typing.Any | None = None,
+    model: mujoco._structs.MjModel | None = None,
     content_type: str | None = None,
   ) -> int: ...
   def equality(self, arg0: str) -> MjsEquality | None: ...
@@ -678,7 +1119,19 @@ class MjSpec:
   def find_default(self, arg0: str) -> MjsDefault | None: ...
   def flex(self, arg0: str) -> MjsFlex | None: ...
   def frame(self, arg0: str) -> MjsFrame | None: ...
-  def fuse_static(self, vfs: MjVfs | None = None) -> None: ...
+  def fuse_static(self, vfs: MjVfs | None = None) -> None:
+    """
+    Fuses the static bodies of the spec with their parents.
+
+    Each fused body becomes a frame in its parent, holding what the body held.
+    Objects referring to the fused bodies must not be used afterwards. Assets
+    are read as in compile().
+
+    Parameters
+    ----------
+    vfs : MjVfs, optional
+        A VFS to read assets from. Cannot be used with assets.
+    """
   def geom(self, arg0: str) -> MjsGeom | None: ...
   def hfield(self, arg0: str) -> MjsHField | None: ...
   def joint(self, arg0: str) -> MjsJoint | None: ...
@@ -704,11 +1157,11 @@ class MjSpec:
   @property
   def _address(self) -> int: ...
   @property
-  def actuators(self) -> list: ...
+  def actuators(self) -> list[MjsActuator]: ...
   @property
-  def bodies(self) -> list: ...
+  def bodies(self) -> list[MjsBody]: ...
   @property
-  def cameras(self) -> list: ...
+  def cameras(self) -> list[MjsCamera]: ...
   @property
   def copy_during_attach(self) -> None: ...
   @copy_during_attach.setter
@@ -716,31 +1169,31 @@ class MjSpec:
   @property
   def default(self) -> MjsDefault: ...
   @property
-  def equalities(self) -> list: ...
+  def equalities(self) -> list[MjsEquality]: ...
   @property
-  def excludes(self) -> list: ...
+  def excludes(self) -> list[MjsExclude]: ...
   @property
-  def flexes(self) -> list: ...
+  def flexes(self) -> list[MjsFlex]: ...
   @property
-  def frames(self) -> list: ...
+  def frames(self) -> list[MjsFrame]: ...
   @property
-  def geoms(self) -> list: ...
+  def geoms(self) -> list[MjsGeom]: ...
   @property
-  def hfields(self) -> list: ...
+  def hfields(self) -> list[MjsHField]: ...
   @property
-  def joints(self) -> list: ...
+  def joints(self) -> list[MjsJoint]: ...
   @property
-  def keys(self) -> list: ...
+  def keys(self) -> list[MjsKey]: ...
   @property
-  def lights(self) -> list: ...
+  def lights(self) -> list[MjsLight]: ...
   @property
-  def materials(self) -> list: ...
+  def materials(self) -> list[MjsMaterial]: ...
   @property
   def memory(self) -> int: ...
   @memory.setter
   def memory(self, arg1: typing.SupportsInt | typing.SupportsIndex) -> None: ...
   @property
-  def meshes(self) -> list: ...
+  def meshes(self) -> list[MjsMesh]: ...
   @property
   def nconmax(self) -> int: ...
   @nconmax.setter
@@ -764,7 +1217,7 @@ class MjSpec:
   @nstack.setter
   def nstack(self, arg1: typing.SupportsInt | typing.SupportsIndex) -> None: ...
   @property
-  def numerics(self) -> list: ...
+  def numerics(self) -> list[MjsNumeric]: ...
   @property
   def nuser_actuator(self) -> int: ...
   @nuser_actuator.setter
@@ -820,23 +1273,23 @@ class MjSpec:
     self, arg1: typing.SupportsInt | typing.SupportsIndex
   ) -> None: ...
   @property
-  def pairs(self) -> list: ...
+  def pairs(self) -> list[MjsPair]: ...
   @property
   def parent(self) -> MjSpec: ...
   @property
-  def plugins(self) -> list: ...
+  def plugins(self) -> list[MjsPlugin]: ...
   @property
-  def sensors(self) -> list: ...
+  def sensors(self) -> list[MjsSensor]: ...
   @property
-  def sites(self) -> list: ...
+  def sites(self) -> list[MjsSite]: ...
   @property
-  def skins(self) -> list: ...
+  def skins(self) -> list[MjsSkin]: ...
   @property
-  def tendons(self) -> list: ...
+  def tendons(self) -> list[MjsTendon]: ...
   @property
-  def texts(self) -> list: ...
+  def texts(self) -> list[MjsText]: ...
   @property
-  def textures(self) -> list: ...
+  def textures(self) -> list[MjsTexture]: ...
   @property
   def timer(
     self,
@@ -844,7 +1297,7 @@ class MjSpec:
     numpy.typing.NDArray[numpy.float64], '[9, 1]', 'flags.writeable'
   ]: ...
   @property
-  def tuples(self) -> list: ...
+  def tuples(self) -> list[MjsTuple]: ...
   @property
   def worldbody(self) -> MjsBody: ...
 
@@ -937,7 +1390,38 @@ class MjsBody:
     explicitinertial: typing.SupportsInt | typing.SupportsIndex | None = None,
     plugin: MjsPlugin | None = None,
     info: str | None = None,
-  ) -> MjsBody: ...
+  ) -> MjsBody:
+    """
+    Add body to spec.
+
+    Args:
+      name: str
+      childclass: str
+      pos: list[float]
+      quat: list[float]
+      axisangle: list[float]
+      xyaxes: list[float]
+      zaxis: list[float]
+      euler: list[float]
+      mass: float
+      ipos: list[float]
+      iquat: list[float]
+      inertia: list[float]
+      iaxisangle: list[float]
+      ixyaxes: list[float]
+      izaxis: list[float]
+      ieuler: list[float]
+      fullinertia: list[float]
+      mocap: int
+      gravcomp: float
+      sleep: int
+      simple: int
+      fuse: int
+      userdata: list[float]
+      explicitinertial: int
+      plugin: MjsPlugin
+      info: str
+    """
   def add_camera(
     self,
     default: MjsDefault | None = None,
@@ -997,7 +1481,34 @@ class MjsBody:
     ]
     | None = None,
     info: str | None = None,
-  ) -> MjsCamera: ...
+  ) -> MjsCamera:
+    """
+    Add camera to spec.
+
+    Args:
+      name: str
+      pos: list[float]
+      quat: list[float]
+      axisangle: list[float]
+      xyaxes: list[float]
+      zaxis: list[float]
+      euler: list[float]
+      mode: int
+      targetbody: str
+      proj: int
+      resolution: list[float]
+      output: int
+      fovy: float
+      ipd: float
+      intrinsic: list[float]
+      sensor_size: list[float]
+      focal_length: list[float]
+      focal_pixel: list[float]
+      principal_length: list[float]
+      principal_pixel: list[float]
+      userdata: list[float]
+      info: str
+    """
   def add_frame(
     self,
     default: MjsFrame | None = None,
@@ -1020,7 +1531,21 @@ class MjsBody:
     euler: collections.abc.Sequence[typing.SupportsFloat | typing.SupportsIndex]
     | None = None,
     info: str | None = None,
-  ) -> MjsFrame: ...
+  ) -> MjsFrame:
+    """
+    Add frame to spec.
+
+    Args:
+      name: str
+      childclass: str
+      pos: list[float]
+      quat: list[float]
+      axisangle: list[float]
+      xyaxes: list[float]
+      zaxis: list[float]
+      euler: list[float]
+      info: str
+    """
   def add_freejoint(
     self,
     *,
@@ -1053,7 +1578,7 @@ class MjsBody:
       typing.SupportsFloat | typing.SupportsIndex
     ]
     | None = None,
-    size: typing.Any | None = None,
+    size: _ScalarOrArray | None = None,
     contype: typing.SupportsInt | typing.SupportsIndex | None = None,
     conaffinity: typing.SupportsInt | typing.SupportsIndex | None = None,
     condim: typing.SupportsInt | typing.SupportsIndex | None = None,
@@ -1099,7 +1624,48 @@ class MjsBody:
     | None = None,
     plugin: MjsPlugin | None = None,
     info: str | None = None,
-  ) -> MjsGeom: ...
+  ) -> MjsGeom:
+    """
+    Add geom to spec.
+
+    Args:
+      name: str
+      type: int
+      pos: list[float]
+      quat: list[float]
+      axisangle: list[float]
+      xyaxes: list[float]
+      zaxis: list[float]
+      euler: list[float]
+      fromto: list[float]
+      size: Optional[list[float]]
+      contype: int
+      conaffinity: int
+      condim: int
+      priority: int
+      friction: list[float]
+      solmix: float
+      solref: list[float]
+      solimp: list[float]
+      margin: float
+      gap: float
+      surfacevel: list[float]
+      adhesion: float
+      mass: float
+      density: float
+      typeinertia: int
+      fluid_ellipsoid: int
+      fluid_coefs: list[float]
+      material: str
+      rgba: list[float]
+      group: int
+      hfieldname: str
+      meshname: str
+      fitscale: float
+      userdata: list[float]
+      plugin: MjsPlugin
+      info: str
+    """
   def add_joint(
     self,
     default: MjsDefault | None = None,
@@ -1111,7 +1677,7 @@ class MjsBody:
     | None = None,
     ref: typing.SupportsFloat | typing.SupportsIndex | None = None,
     align: typing.SupportsInt | typing.SupportsIndex | None = None,
-    stiffness: typing.Any | None = None,
+    stiffness: _ScalarOrArray | None = None,
     springref: typing.SupportsFloat | typing.SupportsIndex | None = None,
     springdamper: collections.abc.Sequence[
       typing.SupportsFloat | typing.SupportsIndex
@@ -1135,7 +1701,7 @@ class MjsBody:
     ]
     | None = None,
     armature: typing.SupportsFloat | typing.SupportsIndex | None = None,
-    damping: typing.Any | None = None,
+    damping: _ScalarOrArray | None = None,
     frictionloss: typing.SupportsFloat | typing.SupportsIndex | None = None,
     solref_friction: collections.abc.Sequence[
       typing.SupportsFloat | typing.SupportsIndex
@@ -1152,7 +1718,37 @@ class MjsBody:
     ]
     | None = None,
     info: str | None = None,
-  ) -> MjsJoint: ...
+  ) -> MjsJoint:
+    """
+    Add joint to spec.
+
+    Args:
+      name: str
+      type: int
+      pos: list[float]
+      axis: list[float]
+      ref: float
+      align: int
+      stiffness: Optional[list[float]]
+      springref: float
+      springdamper: list[float]
+      limited: int
+      range: list[float]
+      margin: float
+      solref_limit: list[float]
+      solimp_limit: list[float]
+      actfrclimited: int
+      actfrcrange: list[float]
+      armature: float
+      damping: Optional[list[float]]
+      frictionloss: float
+      solref_friction: list[float]
+      solimp_friction: list[float]
+      group: int
+      actgravcomp: int
+      userdata: list[float]
+      info: str
+    """
   def add_light(
     self,
     default: MjsDefault | None = None,
@@ -1190,7 +1786,32 @@ class MjsBody:
     ]
     | None = None,
     info: str | None = None,
-  ) -> MjsLight: ...
+  ) -> MjsLight:
+    """
+    Add light to spec.
+
+    Args:
+      name: str
+      pos: list[float]
+      dir: list[float]
+      mode: int
+      targetbody: str
+      active: int
+      type: int
+      texture: str
+      castshadow: int
+      bulbradius: float
+      intensity: float
+      range: float
+      attenuation: list[float]
+      cutoff: float
+      softness: float
+      exponent: float
+      ambient: list[float]
+      diffuse: list[float]
+      specular: list[float]
+      info: str
+    """
   def add_site(
     self,
     default: MjsDefault | None = None,
@@ -1215,7 +1836,7 @@ class MjsBody:
       typing.SupportsFloat | typing.SupportsIndex
     ]
     | None = None,
-    size: typing.Any | None = None,
+    size: _ScalarOrArray | None = None,
     type: typing.SupportsInt | typing.SupportsIndex | None = None,
     material: str | None = None,
     group: typing.SupportsInt | typing.SupportsIndex | None = None,
@@ -1227,14 +1848,43 @@ class MjsBody:
     ]
     | None = None,
     info: str | None = None,
-  ) -> MjsSite: ...
+  ) -> MjsSite:
+    """
+    Add site to spec.
+
+    Args:
+      name: str
+      pos: list[float]
+      quat: list[float]
+      axisangle: list[float]
+      xyaxes: list[float]
+      zaxis: list[float]
+      euler: list[float]
+      fromto: list[float]
+      size: Optional[list[float]]
+      type: int
+      material: str
+      group: int
+      rgba: list[float]
+      meshname: str
+      userdata: list[float]
+      info: str
+    """
   def attach_frame(
     self, frame: MjsFrame, prefix: str | None = None, suffix: str | None = None
   ) -> MjsFrame: ...
   @typing.overload
-  def find_all(self, arg0: mujoco._enums.mjtObj) -> list: ...
+  def find_all(
+    self, arg0: mujoco._enums.mjtObj
+  ) -> list[
+    MjsBody | MjsFrame | MjsGeom | MjsSite | MjsJoint | MjsLight | MjsCamera
+  ]: ...
   @typing.overload
-  def find_all(self, arg0: str) -> list: ...
+  def find_all(
+    self, arg0: str
+  ) -> list[
+    MjsBody | MjsFrame | MjsGeom | MjsSite | MjsJoint | MjsLight | MjsCamera
+  ]: ...
   def find_child(self, arg0: str) -> MjsBody: ...
   def first_body(self) -> MjsBody: ...
   def first_camera(self) -> MjsCamera: ...
@@ -1289,15 +1939,15 @@ class MjsBody:
   def set_frame(self, arg0: MjsFrame) -> None: ...
   def to_frame(self) -> MjsFrame: ...
   @property
-  def bodies(self) -> list: ...
+  def bodies(self) -> list[MjsBody]: ...
   @property
-  def cameras(self) -> list: ...
+  def cameras(self) -> list[MjsCamera]: ...
   @property
   def compiler(self) -> MjsCompiler: ...
   @property
   def frame(self) -> MjsFrame: ...
   @property
-  def frames(self) -> list: ...
+  def frames(self) -> list[MjsFrame]: ...
   @property
   def fullinertia(
     self,
@@ -1311,7 +1961,7 @@ class MjsBody:
   @fuse.setter
   def fuse(self, arg1: typing.SupportsInt | typing.SupportsIndex) -> None: ...
   @property
-  def geoms(self) -> list: ...
+  def geoms(self) -> list[MjsGeom]: ...
   @property
   def gravcomp(self) -> float: ...
   @gravcomp.setter
@@ -1345,9 +1995,9 @@ class MjsBody:
   @iquat.setter
   def iquat(self, arg1: numpy.typing.ArrayLike) -> None: ...
   @property
-  def joints(self) -> list: ...
+  def joints(self) -> list[MjsJoint]: ...
   @property
-  def lights(self) -> list: ...
+  def lights(self) -> list[MjsLight]: ...
   @property
   def mass(self) -> float: ...
   @mass.setter
@@ -1377,7 +2027,7 @@ class MjsBody:
   @simple.setter
   def simple(self, arg1: typing.SupportsInt | typing.SupportsIndex) -> None: ...
   @property
-  def sites(self) -> list: ...
+  def sites(self) -> list[MjsSite]: ...
   @property
   def sleep(self) -> mujoco._enums.mjtSleepPolicy: ...
   @sleep.setter
@@ -1454,7 +2104,38 @@ class MjsFrame:
     explicitinertial: typing.SupportsInt | typing.SupportsIndex | None = None,
     plugin: MjsPlugin | None = None,
     info: str | None = None,
-  ) -> MjsBody: ...
+  ) -> MjsBody:
+    """
+    Add body to spec.
+
+    Args:
+      name: str
+      childclass: str
+      pos: list[float]
+      quat: list[float]
+      axisangle: list[float]
+      xyaxes: list[float]
+      zaxis: list[float]
+      euler: list[float]
+      mass: float
+      ipos: list[float]
+      iquat: list[float]
+      inertia: list[float]
+      iaxisangle: list[float]
+      ixyaxes: list[float]
+      izaxis: list[float]
+      ieuler: list[float]
+      fullinertia: list[float]
+      mocap: int
+      gravcomp: float
+      sleep: int
+      simple: int
+      fuse: int
+      userdata: list[float]
+      explicitinertial: int
+      plugin: MjsPlugin
+      info: str
+    """
   def add_camera(
     self,
     default: MjsDefault | None = None,
@@ -1514,7 +2195,34 @@ class MjsFrame:
     ]
     | None = None,
     info: str | None = None,
-  ) -> MjsCamera: ...
+  ) -> MjsCamera:
+    """
+    Add camera to spec.
+
+    Args:
+      name: str
+      pos: list[float]
+      quat: list[float]
+      axisangle: list[float]
+      xyaxes: list[float]
+      zaxis: list[float]
+      euler: list[float]
+      mode: int
+      targetbody: str
+      proj: int
+      resolution: list[float]
+      output: int
+      fovy: float
+      ipd: float
+      intrinsic: list[float]
+      sensor_size: list[float]
+      focal_length: list[float]
+      focal_pixel: list[float]
+      principal_length: list[float]
+      principal_pixel: list[float]
+      userdata: list[float]
+      info: str
+    """
   def add_frame(
     self,
     default: MjsFrame | None = None,
@@ -1537,7 +2245,21 @@ class MjsFrame:
     euler: collections.abc.Sequence[typing.SupportsFloat | typing.SupportsIndex]
     | None = None,
     info: str | None = None,
-  ) -> MjsFrame: ...
+  ) -> MjsFrame:
+    """
+    Add frame to spec.
+
+    Args:
+      name: str
+      childclass: str
+      pos: list[float]
+      quat: list[float]
+      axisangle: list[float]
+      xyaxes: list[float]
+      zaxis: list[float]
+      euler: list[float]
+      info: str
+    """
   def add_geom(
     self,
     default: MjsDefault | None = None,
@@ -1563,7 +2285,7 @@ class MjsFrame:
       typing.SupportsFloat | typing.SupportsIndex
     ]
     | None = None,
-    size: typing.Any | None = None,
+    size: _ScalarOrArray | None = None,
     contype: typing.SupportsInt | typing.SupportsIndex | None = None,
     conaffinity: typing.SupportsInt | typing.SupportsIndex | None = None,
     condim: typing.SupportsInt | typing.SupportsIndex | None = None,
@@ -1609,7 +2331,48 @@ class MjsFrame:
     | None = None,
     plugin: MjsPlugin | None = None,
     info: str | None = None,
-  ) -> MjsGeom: ...
+  ) -> MjsGeom:
+    """
+    Add geom to spec.
+
+    Args:
+      name: str
+      type: int
+      pos: list[float]
+      quat: list[float]
+      axisangle: list[float]
+      xyaxes: list[float]
+      zaxis: list[float]
+      euler: list[float]
+      fromto: list[float]
+      size: Optional[list[float]]
+      contype: int
+      conaffinity: int
+      condim: int
+      priority: int
+      friction: list[float]
+      solmix: float
+      solref: list[float]
+      solimp: list[float]
+      margin: float
+      gap: float
+      surfacevel: list[float]
+      adhesion: float
+      mass: float
+      density: float
+      typeinertia: int
+      fluid_ellipsoid: int
+      fluid_coefs: list[float]
+      material: str
+      rgba: list[float]
+      group: int
+      hfieldname: str
+      meshname: str
+      fitscale: float
+      userdata: list[float]
+      plugin: MjsPlugin
+      info: str
+    """
   def add_joint(
     self,
     default: MjsDefault | None = None,
@@ -1621,7 +2384,7 @@ class MjsFrame:
     | None = None,
     ref: typing.SupportsFloat | typing.SupportsIndex | None = None,
     align: typing.SupportsInt | typing.SupportsIndex | None = None,
-    stiffness: typing.Any | None = None,
+    stiffness: _ScalarOrArray | None = None,
     springref: typing.SupportsFloat | typing.SupportsIndex | None = None,
     springdamper: collections.abc.Sequence[
       typing.SupportsFloat | typing.SupportsIndex
@@ -1645,7 +2408,7 @@ class MjsFrame:
     ]
     | None = None,
     armature: typing.SupportsFloat | typing.SupportsIndex | None = None,
-    damping: typing.Any | None = None,
+    damping: _ScalarOrArray | None = None,
     frictionloss: typing.SupportsFloat | typing.SupportsIndex | None = None,
     solref_friction: collections.abc.Sequence[
       typing.SupportsFloat | typing.SupportsIndex
@@ -1662,7 +2425,37 @@ class MjsFrame:
     ]
     | None = None,
     info: str | None = None,
-  ) -> MjsJoint: ...
+  ) -> MjsJoint:
+    """
+    Add joint to spec.
+
+    Args:
+      name: str
+      type: int
+      pos: list[float]
+      axis: list[float]
+      ref: float
+      align: int
+      stiffness: Optional[list[float]]
+      springref: float
+      springdamper: list[float]
+      limited: int
+      range: list[float]
+      margin: float
+      solref_limit: list[float]
+      solimp_limit: list[float]
+      actfrclimited: int
+      actfrcrange: list[float]
+      armature: float
+      damping: Optional[list[float]]
+      frictionloss: float
+      solref_friction: list[float]
+      solimp_friction: list[float]
+      group: int
+      actgravcomp: int
+      userdata: list[float]
+      info: str
+    """
   def add_light(
     self,
     default: MjsDefault | None = None,
@@ -1700,7 +2493,32 @@ class MjsFrame:
     ]
     | None = None,
     info: str | None = None,
-  ) -> MjsLight: ...
+  ) -> MjsLight:
+    """
+    Add light to spec.
+
+    Args:
+      name: str
+      pos: list[float]
+      dir: list[float]
+      mode: int
+      targetbody: str
+      active: int
+      type: int
+      texture: str
+      castshadow: int
+      bulbradius: float
+      intensity: float
+      range: float
+      attenuation: list[float]
+      cutoff: float
+      softness: float
+      exponent: float
+      ambient: list[float]
+      diffuse: list[float]
+      specular: list[float]
+      info: str
+    """
   def add_site(
     self,
     default: MjsDefault | None = None,
@@ -1725,7 +2543,7 @@ class MjsFrame:
       typing.SupportsFloat | typing.SupportsIndex
     ]
     | None = None,
-    size: typing.Any | None = None,
+    size: _ScalarOrArray | None = None,
     type: typing.SupportsInt | typing.SupportsIndex | None = None,
     material: str | None = None,
     group: typing.SupportsInt | typing.SupportsIndex | None = None,
@@ -1737,7 +2555,28 @@ class MjsFrame:
     ]
     | None = None,
     info: str | None = None,
-  ) -> MjsSite: ...
+  ) -> MjsSite:
+    """
+    Add site to spec.
+
+    Args:
+      name: str
+      pos: list[float]
+      quat: list[float]
+      axisangle: list[float]
+      xyaxes: list[float]
+      zaxis: list[float]
+      euler: list[float]
+      fromto: list[float]
+      size: Optional[list[float]]
+      type: int
+      material: str
+      group: int
+      rgba: list[float]
+      meshname: str
+      userdata: list[float]
+      info: str
+    """
   def attach_body(
     self, body: MjsBody, prefix: str | None = None, suffix: str | None = None
   ) -> MjsBody: ...
@@ -2293,7 +3132,12 @@ class MjsMaterial:
   @property
   def textures(self) -> MjStringVec: ...
   @textures.setter
-  def textures(self, arg1: typing.Any) -> None: ...
+  def textures(
+    self,
+    arg1: collections.abc.Sequence[str | bytes]
+    | numpy.typing.NDArray[numpy.str_]
+    | numpy.typing.NDArray[numpy.bytes_],
+  ) -> None: ...
 
 class MjsSite:
   alt: MjsOrientation
@@ -2519,7 +3363,12 @@ class MjsSkin:
   @property
   def bodyname(self) -> MjStringVec: ...
   @bodyname.setter
-  def bodyname(self, arg1: typing.Any) -> None: ...
+  def bodyname(
+    self,
+    arg1: collections.abc.Sequence[str | bytes]
+    | numpy.typing.NDArray[numpy.str_]
+    | numpy.typing.NDArray[numpy.bytes_],
+  ) -> None: ...
   @property
   def compiler(self) -> MjsCompiler: ...
   @property
@@ -2557,13 +3406,37 @@ class MjsSkin:
   @vert.setter
   def vert(self, arg1: numpy.typing.ArrayLike) -> None: ...
   @property
-  def vertid(self) -> list: ...
+  def vertid(self) -> list[list[int]]: ...
   @vertid.setter
-  def vertid(self, arg1: typing.Any) -> None: ...
+  def vertid(
+    self,
+    arg1: collections.abc.Sequence[
+      collections.abc.Sequence[int]
+      | numpy.typing.NDArray[numpy.integer]
+      | numpy.typing.NDArray[numpy.bool_]
+      | numpy.typing.NDArray[numpy.float16]
+      | numpy.typing.NDArray[numpy.float32]
+      | numpy.typing.NDArray[numpy.complexfloating]
+    ]
+    | numpy.typing.NDArray[numpy.integer]
+    | numpy.typing.NDArray[numpy.bool_]
+    | numpy.typing.NDArray[numpy.float16]
+    | numpy.typing.NDArray[numpy.float32]
+    | numpy.typing.NDArray[numpy.complexfloating],
+  ) -> None: ...
   @property
-  def vertweight(self) -> list: ...
+  def vertweight(self) -> list[list[float]]: ...
   @vertweight.setter
-  def vertweight(self, arg1: typing.Any) -> None: ...
+  def vertweight(
+    self,
+    arg1: collections.abc.Sequence[
+      collections.abc.Sequence[float]
+      | numpy.typing.NDArray[numpy.number]
+      | numpy.typing.NDArray[numpy.bool_]
+    ]
+    | numpy.typing.NDArray[numpy.number]
+    | numpy.typing.NDArray[numpy.bool_],
+  ) -> None: ...
 
 class MjsTexture:
   content_type: str
@@ -2590,11 +3463,21 @@ class MjsTexture:
   @property
   def cubefiles(self) -> MjStringVec: ...
   @cubefiles.setter
-  def cubefiles(self, arg1: typing.Any) -> None: ...
+  def cubefiles(
+    self,
+    arg1: collections.abc.Sequence[str | bytes]
+    | numpy.typing.NDArray[numpy.str_]
+    | numpy.typing.NDArray[numpy.bytes_],
+  ) -> None: ...
   @property
   def gridlayout(self) -> MjCharVec: ...
   @gridlayout.setter
-  def gridlayout(self, arg1: typing.Any) -> None: ...
+  def gridlayout(
+    self,
+    arg1: collections.abc.Iterable[str | bytes]
+    | numpy.typing.NDArray[numpy.str_]
+    | numpy.typing.NDArray[numpy.bytes_],
+  ) -> None: ...
   @property
   def gridsize(
     self,
@@ -2681,7 +3564,12 @@ class MjsTuple:
   @property
   def objname(self) -> MjStringVec: ...
   @objname.setter
-  def objname(self, arg1: typing.Any) -> None: ...
+  def objname(
+    self,
+    arg1: collections.abc.Sequence[str | bytes]
+    | numpy.typing.NDArray[numpy.str_]
+    | numpy.typing.NDArray[numpy.bytes_],
+  ) -> None: ...
   @property
   def objprm(self) -> MjDoubleVec: ...
   @objprm.setter
@@ -2917,7 +3805,12 @@ class MjsFlex:
   @property
   def nodebody(self) -> MjStringVec: ...
   @nodebody.setter
-  def nodebody(self, arg1: typing.Any) -> None: ...
+  def nodebody(
+    self,
+    arg1: collections.abc.Sequence[str | bytes]
+    | numpy.typing.NDArray[numpy.str_]
+    | numpy.typing.NDArray[numpy.bytes_],
+  ) -> None: ...
   @property
   def order(self) -> int: ...
   @order.setter
@@ -3009,7 +3902,12 @@ class MjsFlex:
   @property
   def vertbody(self) -> MjStringVec: ...
   @vertbody.setter
-  def vertbody(self, arg1: typing.Any) -> None: ...
+  def vertbody(
+    self,
+    arg1: collections.abc.Sequence[str | bytes]
+    | numpy.typing.NDArray[numpy.str_]
+    | numpy.typing.NDArray[numpy.bytes_],
+  ) -> None: ...
   @property
   def young(self) -> float: ...
   @young.setter
@@ -3803,7 +4701,7 @@ class MjsActuator:
 
 class MjsPlugin:
   active: bool
-  config: dict
+  config: dict[str, str]
   info: str
   name: str
   plugin_name: str
@@ -3857,13 +4755,13 @@ class MjsOrientation:
 class MjsWrap:
   info: str
   @property
-  def coef(self) -> typing.Any: ...
+  def coef(self) -> float | None: ...
   @property
-  def divisor(self) -> typing.Any: ...
+  def divisor(self) -> float | None: ...
   @property
-  def sidesite(self) -> MjsSite: ...
+  def sidesite(self) -> MjsSite | None: ...
   @property
-  def target(self) -> typing.Any: ...
+  def target(self) -> MjsSite | MjsGeom | MjsJoint | None: ...
   @property
   def type(self) -> mujoco._enums.mjtWrap: ...
   @type.setter
@@ -4383,7 +5281,12 @@ class MjsCompiler:
   @property
   def eulerseq(self) -> MjCharVec: ...
   @eulerseq.setter
-  def eulerseq(self, arg1: typing.Any) -> None: ...
+  def eulerseq(
+    self,
+    arg1: collections.abc.Iterable[str | bytes]
+    | numpy.typing.NDArray[numpy.str_]
+    | numpy.typing.NDArray[numpy.bytes_],
+  ) -> None: ...
   @property
   def inertiafromgeom(self) -> mujoco._enums.mjtInertiaFromGeom: ...
   @inertiafromgeom.setter

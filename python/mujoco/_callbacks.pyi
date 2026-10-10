@@ -73,7 +73,9 @@ def get_mjcb_control() -> (
     [mujoco._structs.MjModel, mujoco._structs.MjData], None
   ]
   | None
-): ...
+):
+  """Return the process-wide control callback, or None."""
+
 def get_mjcb_passive() -> (
   collections.abc.Callable[
     [mujoco._structs.MjModel, mujoco._structs.MjData], None
@@ -119,7 +121,28 @@ def set_mjcb_control(
     [mujoco._structs.MjModel, mujoco._structs.MjData], None
   ]
   | None,
-) -> None: ...
+) -> None:
+  """Set the process-wide control callback; None clears it.
+
+  The callback receives the model and data during forward dynamics. Restore
+  any previous callback when the simulation no longer needs this one.
+
+  >>> import mujoco
+  >>> model = mujoco.MjModel.from_xml_string('<mujoco/>')
+  >>> data = mujoco.MjData(model)
+  >>> calls = []
+  >>> def control(model, data):
+  ...     calls.append(data.time)
+  >>> previous = mujoco.get_mjcb_control()
+  >>> try:
+  ...     mujoco.set_mjcb_control(control)
+  ...     mujoco.mj_step(model, data)
+  ... finally:
+  ...     mujoco.set_mjcb_control(previous)
+  >>> bool(calls)
+  True
+  """
+
 def set_mjcb_passive(
   arg0: collections.abc.Callable[
     [mujoco._structs.MjModel, mujoco._structs.MjData], None
