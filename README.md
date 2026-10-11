@@ -1,3 +1,20 @@
+# This is a fork of [MuJoCo](https://github.com/google-deepmind/mujoco), but WITH type annotations.
+
+Upstream has made it clear that type annotations are not a priority (see [issue 1292](https://github.com/google-deepmind/mujoco/issues/1292), [issue 1874](https://github.com/google-deepmind/mujoco/issues/1874), and most importantly this [comment](https://github.com/google-deepmind/mujoco/issues/244#issuecomment-1111010344)). This fork tries to remedy this by adding type annotations to the codebase.
+
+To get started, simply install the package using pip:
+
+```bash
+uv pip install typed-mujoco
+```
+
+This will also install the [MuJoCo](https://github.com/google-deepmind/mujoco) package from PyPI. 
+
+Now, back to the upstream's README.
+
+--- 
+
+
 <h1>
   <a href="#"><img alt="MuJoCo" src="banner.png" width="100%"/></a>
 </h1>
