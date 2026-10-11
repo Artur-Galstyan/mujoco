@@ -19,7 +19,7 @@ from numpy import typing as npt
 from typing_extensions import assert_type
 
 import mujoco
-from mujoco import _render_filament, mjrf
+from mujoco import _render_filament as mjrf
 from mujoco.rendering.filament import renderer
 
 
@@ -38,7 +38,7 @@ def check_filament_types(
   extra_geoms: list[mujoco.MjvGeom],
   pixels: npt.NDArray[np.uint8],
 ) -> None:
-  assert_type(_render_filament.Camera(), mjrf.Camera)
+  assert_type(mjrf.Camera(), mjrf.Camera)
   assert_type(mjrf.DrawMode.DRAW_MODE_DEPTH.value, int)
   assert_type(mjrf.PixelFormat.PIXEL_FORMAT_RGB8.name, str)
   assert_type(mjrf.LightType.LIGHT_SPOT.__index__(), int)

@@ -9,6 +9,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+# Modified for typed-mujoco 3.15.0 compatibility.
 
 import ctypes
 from collections.abc import Iterable, Sequence
@@ -81,7 +82,6 @@ from mujoco._enums import mjrMeshPrimitiveType as mjrMeshPrimitiveType
 from mujoco._enums import mjrPixelFormat as mjrPixelFormat
 from mujoco._enums import mjrVertexAttributeType as mjrVertexAttributeType
 from mujoco._enums import mjrVertexAttributeUsage as mjrVertexAttributeUsage
-from mujoco._enums import mjtActuator as mjtActuator
 from mujoco._enums import mjtAlignFree as mjtAlignFree
 from mujoco._enums import mjtBias as mjtBias
 from mujoco._enums import mjtBuiltin as mjtBuiltin

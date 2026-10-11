@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "typed-mujoco"
+version = "3.15.0.0"
+description = "Partial type stubs for the official MuJoCo 3.15.0 Python package"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+classifiers = ["Typing :: Stubs Only", "Programming Language :: Python :: 3"]
+dependencies = ["mujoco==3.15.0", "typing-extensions>=4.12"]
+
+[dependency-groups]
+typing = ["ty==0.0.85", "ruff==0.17.0"]
+
+[tool.setuptools]
+packages = ["mujoco-stubs"]
+include-package-data = false
+
+[tool.setuptools.package-data]
+"mujoco-stubs" = ["*.pyi", "**/*.pyi", "py.typed"]
+
+[tool.ruff]
+include = ["*.pyi", "*.py"]
+indent-width = 2
+line-length = 80
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "PYI"]
+
+[tool.ruff.lint.per-file-ignores]
+"*.pyi" = ["PYI021"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["mujoco"]
+
+[tool.ruff.format]
+quote-style = "single"

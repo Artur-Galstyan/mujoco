@@ -87,15 +87,15 @@ jobs:
         python -m unittest discover -s python/tests -p 'test_setup.py'
         python -m ruff check --config python/pyproject.toml python/tests/test_setup.py setup.py
         python -m ruff format --check --config python/pyproject.toml python/tests/test_setup.py setup.py
-        python python/tests/typing/check.py
         python -m unittest mujoco.bindings_test.MuJoCoBindingsTest.test_load_plugin
-    - name: Check installed MJX types
+    - name: Smoke-test installed MJX and lint typing tests
       env:
         MUJOCO_GL: disable
       run: |
         source .venv/bin/activate
         uv pip install ./mjx
-        python -I mjx/tests/typing/check.py
+        # The MJX static check needs removed core stubs; companion types target
+        # official 3.15.0, not this development fork.
         python -I mjx/tests/typing/runtime_smoke.py
         python -m ruff check --config python/pyproject.toml mjx/tests/typing/*.py
         python -m ruff format --check --config python/pyproject.toml mjx/tests/typing/*.py
@@ -291,13 +291,6 @@ jobs:
       env:
         TMPDIR: ${{ matrix.tmpdir }}
       run: bash ../../.github/workflows/build_steps.sh install_python_bindings
-
-    - name: Check installed wheel types
-      if: ${{ matrix.label == 'ubuntu-22.04-gcc-12' }}
-      shell: bash
-      env:
-        TMPDIR: ${{ matrix.tmpdir }}
-      run: bash ./.github/workflows/build_steps.sh check_python_typing
 
     - name: Test Python bindings
       if: ${{ runner.os != 'Windows' || contains(matrix.label, 'clang') }}

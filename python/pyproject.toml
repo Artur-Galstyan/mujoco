@@ -53,7 +53,7 @@ exclude = [
 ]
 
 [tool.setuptools.package-data]
-"*" = ["*.pyi", "py.typed"]
+"*" = ["py.typed"]
 mujoco = [
     "libmujoco.*.dylib",
     "libmujoco*.so.*",
@@ -90,21 +90,17 @@ usd = [
 
 [dependency-groups]
 typing = [
-    "pybind11-stubgen==3.0.0",
     "ruff==0.17.0",
     "ty==0.0.85",
 ]
 
 [tool.ruff]
-include = ["*.pyi", "mujoco/codegen/generate_stubs.py", "mujoco/codegen/generate_filament_stubs.py", "mujoco/codegen/generate_studio_stubs.py", "tests/typing/*.py", "tests/test_setup.py"]
+include = ["tests/test_setup.py"]
 indent-width = 2
 line-length = 80
 
 [tool.ruff.lint]
-select = ["E4", "E7", "E9", "F", "I", "PYI"]
-
-[tool.ruff.lint.per-file-ignores]
-"*.pyi" = ["PYI021"]
+select = ["E4", "E7", "E9", "F", "I"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["mujoco"]

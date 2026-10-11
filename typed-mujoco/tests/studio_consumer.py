@@ -14,14 +14,10 @@ import mujoco
 from mujoco.experimental.dear_imgui import dear_imgui as imgui
 from mujoco.experimental.implot import implot
 from mujoco.experimental.studio import (
-  native_viewer,
   native_viewer_cc,
   renderer,
   sim,
   ux,
-  viewer_handle,
-  viewer_protocol,
-  web_viewer,
   window,
 )
 from mujoco.experimental.studio.web import headless_ui, state_payload
@@ -118,23 +114,6 @@ def studio_native(model: mujoco.MjModel, data: mujoco.MjData) -> None:
   )
   assert_type(state_payload.max_state_payload_size(8), int)
   assert_type(state_payload.MAX_EXTRA_GEOMS, int)
-
-
-def studio_wrappers(
-  native: native_viewer.NativeViewer,
-  web: web_viewer.WebViewer,
-  viewer: viewer_protocol.Viewer,
-  handle: viewer_handle.ViewerHandle,
-) -> None:
-  assert_type(native.upload_image(0, b'\x00' * 4, 1, 1, 4), int)
-  assert_type(native.render_to_texture(viewer.model, viewer.data, 0, 1, 1), int)
-  assert_type(web.upload_image(0, b'\x00' * 4, 1, 1, 4), int)
-  assert_type(viewer.render_flags, ux.RenderFlags)
-  assert_type(handle.model, mujoco.MjModel | None)
-  assert_type(
-    handle.sync(handle.model, handle.data),
-    tuple[mujoco.MjModel | None, mujoco.MjData | None],
-  )
 
 
 def studio_ui() -> None:

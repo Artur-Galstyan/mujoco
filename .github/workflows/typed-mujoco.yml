@@ -1,0 +1,53 @@
+name: typed-mujoco
+
+on:
+  push:
+    paths:
+      - 'typed-mujoco/**'
+      - '.github/workflows/typed-mujoco.yml'
+  pull_request:
+    paths:
+      - 'typed-mujoco/**'
+      - '.github/workflows/typed-mujoco.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    env:
+      MUJOCO_GL: disable
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+      - name: Build the wheel, sdist, and sdist-derived wheel
+        run: |
+          echo /usr/sbin >> "$GITHUB_PATH"
+          uv build typed-mujoco --out-dir typed-mujoco/dist --python 3.13
+          uv build typed-mujoco/dist/*.tar.gz --wheel --out-dir typed-mujoco/dist/roundtrip --python 3.13
+      - name: Check the wheel and uninstall safety
+        run: |
+          uv venv --python 3.13 .venv
+          source .venv/bin/activate
+          uv pip install typed-mujoco/dist/*.whl
+          uv pip install --group typed-mujoco/pyproject.toml:typing
+          python -I typed-mujoco/tests/check.py
+          uv pip uninstall typed-mujoco
+          python -I -c 'import mujoco, mujoco.minimize; assert mujoco.__version__ == "3.15.0"'
+      - name: Check the sdist-derived wheel
+        run: |
+          source .venv/bin/activate
+          uv pip install typed-mujoco/dist/roundtrip/*.whl
+          python -I typed-mujoco/tests/check.py
+          ruff check --config typed-mujoco/pyproject.toml typed-mujoco/tests typed-mujoco/mujoco-stubs
+          ruff format --check --config typed-mujoco/pyproject.toml typed-mujoco/tests typed-mujoco/mujoco-stubs

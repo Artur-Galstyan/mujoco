@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""A consumer of the installed wheel; ty checks this file but never runs it."""
+"""Static consumer of the installed typed-mujoco stubs and mujoco runtime."""
 
 from typing import SupportsInt, TypeAlias
 
@@ -79,7 +79,7 @@ def check_types() -> None:
     mujoco.MjsFrame,
   )
   assert_type(spec.attach(mujoco.MjSpec(), frame='mount'), mujoco.MjsFrame)
-  assert_type(spec.copy_back(model), None)
+
   assert_type(spec.encode('model.mjb', model=model), int)
   assert_type(
     spec.add_tendon().wrap_site('anchor').target,

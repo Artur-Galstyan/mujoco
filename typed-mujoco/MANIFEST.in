@@ -1,0 +1,3 @@
+include LICENSE README.md
+recursive-include mujoco-stubs *.pyi py.typed
+prune tests

@@ -12,13 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+# Modified for typed-mujoco 3.15.0 compatibility.
 """Class for coordinating the rendering of scenes to render targets."""
 
 from typing import Any, Protocol, TypeAlias
 
 from typing_extensions import Buffer, CapsuleType
 
-from mujoco import MjvGLCamera, mjrf
+from mujoco import MjvGLCamera
+from mujoco import _render_filament as mjrf
 
 class SupportsDLPack(Protocol):
   """Protocol for objects supporting the DLPack tensor exchange protocol."""
