@@ -1,4 +1,4 @@
-"""Verify installed typed-mujoco against the official MuJoCo 3.15.0 wheel."""
+"""Verify installed typed-mujoco against the installed official MuJoCo wheel."""
 
 import ast
 import doctest
@@ -56,11 +56,10 @@ def installed_stubs() -> Path:
 
   upstream = importlib.metadata.distribution('mujoco')
   companion = importlib.metadata.distribution('typed-mujoco')
-  assert upstream.version == '3.15.0', upstream.version
   assert companion.version == '3.15.0.0', companion.version
   assert any(
-    req.replace(' ', '') == 'mujoco==3.15.0' for req in companion.requires or []
-  ), 'Companion must require the exact official runtime version'
+    req.replace(' ', '') == 'mujoco>=3.15.0' for req in companion.requires or []
+  ), 'Companion must require MuJoCo 3.15.0 or newer'
   assert upstream.files is not None and companion.files is not None
   upstream_files = {p.as_posix() for p in upstream.files}
   owned = {p.as_posix() for p in companion.files}

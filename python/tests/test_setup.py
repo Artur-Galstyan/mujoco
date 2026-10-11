@@ -50,7 +50,11 @@ class RepositoryInstallTest(unittest.TestCase):
 
   def test_root_uses_child_setup_and_restores_working_directory(self):
     calls = []
-    with tempfile.TemporaryDirectory() as temp:
+    with tempfile.TemporaryDirectory() as directory:
+      temp = Path(directory)
+      if os.name != 'nt':
+        temp = temp / 'alias'
+        temp.symlink_to(directory, target_is_directory=True)
       previous = Path.cwd()
       try:
         os.chdir(temp)
@@ -62,7 +66,7 @@ class RepositoryInstallTest(unittest.TestCase):
           ),
         ) as setup:
           runpy.run_path(str(PYTHON.parent / 'setup.py'))
-        self.assertEqual(Path.cwd(), Path(temp))
+        self.assertEqual(Path.cwd(), Path(temp).resolve())
       finally:
         os.chdir(previous)
     setup.assert_called_once()
@@ -89,7 +93,7 @@ class RepositoryInstallTest(unittest.TestCase):
         ):
           with self.assertRaisesRegex(RuntimeError, 'failed'):
             runpy.run_path(str(PYTHON.parent / 'setup.py'))
-        self.assertEqual(Path.cwd(), Path(temp))
+        self.assertEqual(Path.cwd(), Path(temp).resolve())
       finally:
         os.chdir(previous)
 

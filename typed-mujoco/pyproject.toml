@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=69"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -10,7 +10,11 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
 classifiers = ["Typing :: Stubs Only", "Programming Language :: Python :: 3"]
-dependencies = ["mujoco==3.15.0", "typing-extensions>=4.12"]
+dependencies = ["mujoco>=3.15.0", "typing-extensions>=4.12"]
+
+[project.urls]
+Repository = "https://github.com/Artur-Galstyan/mujoco"
+Issues = "https://github.com/Artur-Galstyan/mujoco/issues"
 
 [dependency-groups]
 typing = ["ty==0.0.85", "ruff==0.17.0"]
