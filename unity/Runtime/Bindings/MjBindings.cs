@@ -118,7 +118,7 @@ public const int mjMAXLINEPNT = 1001;
 public const int mjMAXPLANEGRID = 200;
 public const bool THIRD_PARTY_MUJOCO_MJXMACRO_H_ = true;
 public const bool THIRD_PARTY_MUJOCO_MUJOCO_H_ = true;
-public const int mjVERSION_HEADER = 3015001;
+public const int mjVERSION_HEADER = 3016001;
 
 
 // ------------------------------------Enums------------------------------------
@@ -578,7 +578,6 @@ public enum mjtMeshBuiltin : int{
   mjMESH_BUILTIN_ELLIPSOID = 11,
   mjMESH_BUILTIN_SQUARE = 12,
   mjMESH_BUILTIN_DISC = 13,
-  mjMESH_BUILTIN_CIRCLE = 14,
 }
 public enum mjtBuiltin : int{
   mjBUILTIN_NONE = 0,
@@ -618,6 +617,10 @@ public enum mjtConflict : int{
   mjCONFLICT_WARNING = 0,
   mjCONFLICT_MERGE = 1,
   mjCONFLICT_ERROR = 2,
+}
+public enum mjtScaling : int{
+  mjSCALING_SIMILAR = 0,
+  mjSCALING_GEOMETRY = 1,
 }
 public enum mjtActuator : int{
   mjACTUATOR_GENERAL = 0,

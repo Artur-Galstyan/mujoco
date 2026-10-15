@@ -16,6 +16,7 @@
 
 // NOLINTBEGIN(whitespace/line_length)
 // NOLINTBEGIN(whitespace/semicolon)
+// NOLINTBEGIN(misc-include-cleaner)
 
 #include "wasm/codegen/generated/bindings.h"
 
@@ -4263,8 +4264,7 @@ EMSCRIPTEN_BINDINGS(mujoco_bindings) {
     .value("mjMESH_BUILTIN_CYLINDER", mjMESH_BUILTIN_CYLINDER)
     .value("mjMESH_BUILTIN_ELLIPSOID", mjMESH_BUILTIN_ELLIPSOID)
     .value("mjMESH_BUILTIN_SQUARE", mjMESH_BUILTIN_SQUARE)
-    .value("mjMESH_BUILTIN_DISC", mjMESH_BUILTIN_DISC)
-    .value("mjMESH_BUILTIN_CIRCLE", mjMESH_BUILTIN_CIRCLE);
+    .value("mjMESH_BUILTIN_DISC", mjMESH_BUILTIN_DISC);
   enum_<mjtMeshInertia>("mjtMeshInertia")
     .value("mjMESH_INERTIA_CONVEX", mjMESH_INERTIA_CONVEX)
     .value("mjMESH_INERTIA_EXACT", mjMESH_INERTIA_EXACT)
@@ -4361,6 +4361,9 @@ EMSCRIPTEN_BINDINGS(mujoco_bindings) {
     .value("mjSAMEFRAME_INERTIA", mjSAMEFRAME_INERTIA)
     .value("mjSAMEFRAME_BODYROT", mjSAMEFRAME_BODYROT)
     .value("mjSAMEFRAME_INERTIAROT", mjSAMEFRAME_INERTIAROT);
+  enum_<mjtScaling>("mjtScaling")
+    .value("mjSCALING_SIMILAR", mjSCALING_SIMILAR)
+    .value("mjSCALING_GEOMETRY", mjSCALING_GEOMETRY);
   enum_<mjtSection>("mjtSection")
     .value("mjSECT_CLOSED", mjSECT_CLOSED)
     .value("mjSECT_OPEN", mjSECT_OPEN)
@@ -5861,8 +5864,11 @@ EMSCRIPTEN_BINDINGS(mujoco_bindings) {
     .property("childclass", &MjsFrame::childclass, &MjsFrame::set_childclass, reference())
     .property("element", &MjsFrame::element, reference())
     .property("info", &MjsFrame::info, &MjsFrame::set_info, reference())
+    .property("massscale", &MjsFrame::massscale, &MjsFrame::set_massscale)
     .property("pos", &MjsFrame::pos)
-    .property("quat", &MjsFrame::quat);
+    .property("quat", &MjsFrame::quat)
+    .property("scale", &MjsFrame::scale)
+    .property("scaling", &MjsFrame::scaling, &MjsFrame::set_scaling);
   emscripten::class_<MjsGeom>("MjsGeom")
     .property("adhesion", &MjsGeom::adhesion, &MjsGeom::set_adhesion)
     .property("alt", &MjsGeom::alt, reference())
@@ -6871,5 +6877,6 @@ EMSCRIPTEN_BINDINGS(mujoco_bindings) {
 }
 
 }  // namespace mujoco::wasm
+// NOLINTEND(misc-include-cleaner)
 // NOLINTEND(whitespace/semicolon)
 // NOLINTEND(whitespace/line_length)

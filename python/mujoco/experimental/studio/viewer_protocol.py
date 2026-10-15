@@ -14,6 +14,7 @@
 """Base class and configuration for any viewer."""
 
 import abc
+import contextlib
 import copy
 import dataclasses
 import enum
@@ -56,19 +57,25 @@ class ViewerConfig:
 
 
 # -----------------------------------------------------------------------------
-# Base class for any viewer.
+# Viewer lifecycle events.
 # -----------------------------------------------------------------------------
 
 
 @dataclasses.dataclass(frozen=True)
 class ViewerInitEvent(messages.Event):
-  """Lifecycle event dispatched once when the concrete Viewer is initialized.
+  """Lifecycle event dispatched locally once when a ``Viewer`` initializes.
 
-  Plugins that need access to the Viewer should handle this event
-  and cache the reference.
+  ``plugin.ViewerPlugin`` caches ``event.viewer`` as ``self._viewer`` above
+  ``CRITICAL`` priority, so ``self._viewer`` is already set when subclass
+  handlers run.
   """
 
   viewer: 'Viewer'
+
+
+# -----------------------------------------------------------------------------
+# Base class for any viewer.
+# -----------------------------------------------------------------------------
 
 
 class Viewer(abc.ABC):
@@ -84,7 +91,6 @@ class Viewer(abc.ABC):
       endpoint: endpoints.ViewerEndpoint,
       *,
       model: mujoco.MjModel | None = None,
-      model_path: str = '',
       plugins: list[Any] | None = None,
       camera: mujoco.MjvCamera | None = None,
       vis_options: mujoco.MjvOption | None = None,
@@ -100,7 +106,6 @@ class Viewer(abc.ABC):
       model: Optional initial MjModel. If None, an empty model is created from
         an empty MjSpec. The Viewer deep-copies this model and creates its own
         MjData.
-      model_path: Optional path to the model file.
       plugins: Optional list of plugin instances for viewer-side processing.
       camera: Camera parameters. Internal object is created if None.
       vis_options: Visualization options. Internal object is created if None.
@@ -119,7 +124,7 @@ class Viewer(abc.ABC):
     self.model: mujoco.MjModel
     self.data: mujoco.MjData
     self.model_path: str = ''
-    self.load_model(model, model_path)
+    self.load_model(model)
 
     # Visual state.
     self.camera = camera or mujoco.MjvCamera()
@@ -171,6 +176,22 @@ class Viewer(abc.ABC):
     """Sends a message to the simulation process."""
     self._endpoint.send_to_sim(message)
 
+  def send_if_changes(
+      self, *make_messages: messages.MakeMessage
+  ) -> contextlib.AbstractContextManager[None]:
+    """Sends the messages that change during the ``with`` block to the sim.
+
+    Calls each ``make_message()`` on entering and on leaving the block and
+    sends those that differ. Nothing is sent if the viewer stops running or
+    its model is replaced during the block.
+    """
+    model = self.model
+    return messages.send_if_changes(
+        self.send_to_sim,
+        *make_messages,
+        should_send=lambda: self._is_running and self.model is model,
+    )
+
   def get_sim_events(self) -> list[messages.Event]:
     """Returns all pending events from the simulation."""
     return self._endpoint.get_sim_events()
@@ -201,6 +222,11 @@ class Viewer(abc.ABC):
             model=self.model, data=self.data, path=event.path
         )
     )
+
+  @messages.handler(priority=messages.Priority.CRITICAL)
+  def _on_mjoption(self, event: messages.MjOptionSnapshot) -> None:
+    """Applies incoming simulation physics options to the viewer's model."""
+    self.model.opt = event.opt
 
   @messages.handler(priority=messages.Priority.CRITICAL)
   def _on_state(self, event: messages.StateSnapshot) -> None:

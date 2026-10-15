@@ -702,7 +702,6 @@ ENUMS: Mapping[str, EnumDecl] = dict([
              ('mjMESH_BUILTIN_ELLIPSOID', 11),
              ('mjMESH_BUILTIN_SQUARE', 12),
              ('mjMESH_BUILTIN_DISC', 13),
-             ('mjMESH_BUILTIN_CIRCLE', 14),
          ]),
      )),
     ('mjtBuiltin',
@@ -777,6 +776,15 @@ ENUMS: Mapping[str, EnumDecl] = dict([
              ('mjCONFLICT_WARNING', 0),
              ('mjCONFLICT_MERGE', 1),
              ('mjCONFLICT_ERROR', 2),
+         ]),
+     )),
+    ('mjtScaling',
+     EnumDecl(
+         name='mjtScaling',
+         declname='enum mjtScaling',
+         values=dict([
+             ('mjSCALING_SIMILAR', 0),
+             ('mjSCALING_GEOMETRY', 1),
          ]),
      )),
     ('mjtActuator',

@@ -29,7 +29,7 @@ from absl import flags as _flags
 import mujoco
 from mujoco.experimental.studio import launch_passive
 from mujoco.experimental.studio import messages
-from mujoco.experimental.studio import parser
+from mujoco.experimental.studio import plugin
 from mujoco.experimental.studio import step_control
 from mujoco.experimental.studio import viewer_app
 from mujoco.experimental.studio import viewer_protocol
@@ -111,7 +111,7 @@ def _setup_angle_axis(plot_size: imgui.Vec2) -> None:
   )
 
 
-class BodyInspector:
+class BodyInspector(plugin.ViewerPlugin):
   """Handler that draws body-inspection plots using ImGui/ImPlot."""
 
   def __init__(self) -> None:
@@ -229,11 +229,6 @@ def main(argv: list[str]) -> None:
     print('Usage: implot --model=<model_path.xml>')
     sys.exit(1)
 
-  if (data := parser.parse(model_path)) is None:
-    print(f'Error loading model from {model_path!r}')
-    sys.exit(1)
-  model = data.model
-
   title = os.path.basename(sys.argv[0])
 
   config = viewer_protocol.ViewerConfig(
@@ -246,10 +241,12 @@ def main(argv: list[str]) -> None:
 
   launch_passive.run(
       config,
-      model=model,
-      data=data,
-      viewer_plugins=[viewer_app.ViewerApp(), BodyInspector()],
-      sim_plugins=[step_control.StepControl()],
+      model_path=model_path,
+      plugins=[
+          viewer_app.ViewerApp(),
+          BodyInspector(),
+          step_control.StepControl(),
+      ],
   )
 
 

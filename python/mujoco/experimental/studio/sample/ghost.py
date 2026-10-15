@@ -26,7 +26,7 @@ from absl import flags as _flags
 import mujoco
 from mujoco.experimental.studio import launch_passive
 from mujoco.experimental.studio import messages
-from mujoco.experimental.studio import parser
+from mujoco.experimental.studio import plugin
 from mujoco.experimental.studio import step_control
 from mujoco.experimental.studio import ux
 from mujoco.experimental.studio import viewer_app_events
@@ -49,11 +49,10 @@ _WIDTH = _flags.DEFINE_integer('width', 1200, 'Width of the output image.')
 _HEIGHT = _flags.DEFINE_integer('height', 800, 'Height of the output image')
 
 
-class GhostRenderer:
+class GhostRenderer(plugin.ViewerPlugin):
   """Handler that renders time-delayed semi-transparent ghost geoms."""
 
   def __init__(self) -> None:
-    self._viewer: viewer_protocol.Viewer | None = None
     self._delay: float = 0.5
     self._ghost_rgba: list[float] = [0.4, 0.5, 0.9, 0.5]
     self._history: collections.deque[tuple[float, np.ndarray, np.ndarray]] = (
@@ -68,11 +67,6 @@ class GhostRenderer:
     is_weld = model.body_weldid[body_id] == 0
     root_id = model.body_rootid[body_id]
     return bool(is_weld and model.body_mocapid[root_id] < 0)
-
-  @messages.handler
-  def on_viewer_init(self, event: viewer_protocol.ViewerInitEvent) -> None:
-    """Caches the Viewer reference for later access to model/data."""
-    self._viewer = event.viewer
 
   @messages.handler
   def on_post_model(self, event: messages.PostModelEvent) -> None:
@@ -165,15 +159,6 @@ def main(argv: list[str]) -> None:
         'Please provide a model path argument or --model flag.'
     )
 
-  data = None
-  try:
-    if (data := parser.parse(model_path)) is None:
-      raise ValueError('parser returned None')
-  except Exception as ex:  # pylint: disable=broad-except
-    print(f'Failed to load model from {model_path!r}: {ex}')
-    sys.exit(1)
-  model = data.model
-
   config = viewer_protocol.ViewerConfig(
       title=os.path.basename(sys.argv[0]),
       width=_WIDTH.value,
@@ -186,10 +171,8 @@ def main(argv: list[str]) -> None:
 
   launch_passive.run(
       config,
-      model=model,
-      data=data,
-      viewer_plugins=[ghost_renderer],
-      sim_plugins=[step_control.StepControl()],
+      model_path=model_path,
+      plugins=[ghost_renderer, step_control.StepControl()],
   )
 
 

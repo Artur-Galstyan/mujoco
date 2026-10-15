@@ -61,8 +61,8 @@ class BlockDim:
 
   Attributes:
     segmented_sort: segmented sort block dimension (collision_driver)
+    nxn_broadphase: NXN broadphase block dimension (collision_driver)
     convex_ccd: convex CCD kernel block dimension (collision_convex)
-    actuator_velocity: actuator velocity block dimension (forward)
     island_dsu: island discovery DSU block dimension (island)
     ray: ray block dimension (ray)
     contact_sort: contact sort block dimension (sensor)
@@ -82,17 +82,15 @@ class BlockDim:
     solve_search_update_cg: solve search update CG block dimension (solver)
     solve_init_search_cg: solve init search CG block dimension (solver)
     contact_jac_tiled: contact Jacobian tiled block dimension (solver)
-    qderiv_actuator_dense: qderiv actuator dense block dimension (derivative)
     eff_pcg: effective-metric PCG block dimension (derivative)
     render: render block dimension (render)
   """
 
   # collision_driver
   segmented_sort: int = 128
+  nxn_broadphase: int = 128
   # collision_convex
   convex_ccd: int = 64
-  # forward
-  actuator_velocity: int = 32
   # island
   island_dsu: int = 32
   # ray
@@ -118,7 +116,6 @@ class BlockDim:
   solve_init_search_cg: int = 256
   contact_jac_tiled: int = 32
   # derivative
-  qderiv_actuator_dense: int = 32
   eff_pcg: int = 128
   # render
   render: int = 64
@@ -871,6 +868,10 @@ class mat63f(wp.types.matrix(shape=(6, 3), dtype=float)):
   pass
 
 
+class mat55f(wp.types.matrix(shape=(5, 5), dtype=float)):
+  pass
+
+
 class mat66f(wp.types.matrix(shape=(6, 6), dtype=float)):
   pass
 
@@ -890,6 +891,7 @@ mat23 = mat23f
 mat43 = mat43f
 mat53 = mat53f
 mat63 = mat63f
+mat55 = mat55f
 mat66 = mat66f
 mat113 = mat113f
 
@@ -916,6 +918,7 @@ class Option:
     timestep: simulation timestep
     tolerance: main solver tolerance
     ls_tolerance: CG/Newton linesearch tolerance
+    noslip_tolerance: noslip solver tolerance
     ccd_tolerance: convex collision detection tolerance
     sleep_tolerance: sleep velocity tolerance
     gravity: gravitational acceleration
@@ -928,6 +931,7 @@ class Option:
     solver: solver algorithm (SolverType)
     iterations: number of main solver iterations
     ls_iterations: maximum number of CG/Newton linesearch iterations
+    noslip_iterations: maximum number of noslip solver iterations
     ccd_iterations: number of iterations in convex collision detection
     disableflags: bit flags for disabling standard features
     enableflags: bit flags for enabling optional features
@@ -952,6 +956,7 @@ class Option:
   timestep: array("*", float)
   tolerance: array("*", float)
   ls_tolerance: array("*", float)
+  noslip_tolerance: array("*", float)
   ccd_tolerance: array("*", float)
   sleep_tolerance: array("*", float)
   gravity: array("*", wp.vec3)
@@ -964,6 +969,7 @@ class Option:
   solver: int
   iterations: int
   ls_iterations: int
+  noslip_iterations: int
   ccd_iterations: int
   disableflags: int
   enableflags: int
@@ -1482,6 +1488,7 @@ class Model:
     has_fluid: True if wind, density, or viscosity are non-zero at put_model time
     flg_surfacevel: whether model has non-zero surfacevel
     has_sdf_geom: whether the model contains SDF geoms
+    has_boxbox_margin: whether any box-box contact pair has a non-zero margin
     has_flex_selfcollide: whether any flex has self-collision enabled
     has_flex_passive: whether any flex has passive contact enabled
     has_flex_snh: whether any flex uses 3D SNH elasticity
@@ -1500,11 +1507,12 @@ class Model:
     max_flex_dim: maximum flex dimension in the model
     block_dim: block dim options
     body_tree: list of body ids by tree level
+    body_subtreenum: number of bodies in subtree, including self (nbody,)
     body_branches: flattened body ids for all branches
     body_branch_start: start index in body_branches for each branch   (nbranch + 1,)
     mocap_bodyid: id of body for mocap                       (nmocap,)
     body_fluid_ellipsoid: does body use ellipsoid fluid      (nbody,)
-    body_is_free: is body a standalone free body             (nbody,)
+    body_is_free: is body root of a free rigid subtree       (nbody,)
     body_fluid_ellipsoid_adr: body ids with ellipsoid fluid  (nbody_fluid_ellipsoid,)
     body_fluid_box_adr: body ids with box fluid              (nbody_fluid_box,)
     body_freeadr: body ids of free bodies                    (nbodyfree,)
@@ -2010,6 +2018,7 @@ class Model:
   has_fluid: bool
   flg_surfacevel: bool
   has_sdf_geom: bool
+  has_boxbox_margin: bool
   has_flex_selfcollide: bool
   has_flex_passive: bool
   has_flex_snh: bool
@@ -2028,6 +2037,7 @@ class Model:
   max_flex_dim: int
   block_dim: BlockDim
   body_tree: tuple[array("nbody", int), ...]
+  body_subtreenum: array("nbody", int)
   body_branches: array("nbody_branches", int)
   body_branch_start: array("nbranch_start", int)
   mocap_bodyid: array("nmocap", int)
@@ -2582,6 +2592,9 @@ class InverseContext:
   # the full-coordinate Data, set by solve_compact (None natively)
   compact_m_full: Optional["Model"] = None
   compact_d_full: Optional["Data"] = None
+  # discrete integrator effective-metric scratch (see SolverContext)
+  efm_con: Optional[tuple] = None
+  flex_scratch: Optional[tuple] = None
 
 
 @dataclasses.dataclass
@@ -2615,6 +2628,10 @@ class SolverContext:
   # the full-coordinate Data, set by solve_compact (None natively)
   compact_m_full: Optional["Model"] = None
   compact_d_full: Optional["Data"] = None
+  # discrete integrator effective-metric scratch built before the solver loop, which may run
+  # inside wp.capture_while where memory cannot be allocated (None otherwise)
+  efm_con: Optional[tuple] = None
+  flex_scratch: Optional[tuple] = None
 
 
 @dataclasses.dataclass

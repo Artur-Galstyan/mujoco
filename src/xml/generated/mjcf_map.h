@@ -395,6 +395,13 @@ inline constexpr mjMap conflict_map[] = {
 };
 inline constexpr int conflict_sz = 3;
 
+// enum scaling
+inline constexpr mjMap scaling_map[] = {
+  {"similar",   mjSCALING_SIMILAR},
+  {"geometry",  mjSCALING_GEOMETRY},
+};
+inline constexpr int scaling_sz = 2;
+
 // enum lrmode
 inline constexpr mjMap lrmode_map[] = {
   {"none",        mjLRMODE_NONE},
@@ -463,9 +470,8 @@ inline constexpr mjMap meshbuiltin_map[] = {
   {"ellipsoid",    mjMESH_BUILTIN_ELLIPSOID},
   {"square",       mjMESH_BUILTIN_SQUARE},
   {"disc",         mjMESH_BUILTIN_DISC},
-  {"circle",       mjMESH_BUILTIN_CIRCLE},
 };
-inline constexpr int meshbuiltin_sz = 15;
+inline constexpr int meshbuiltin_sz = 14;
 
 // enum fcomp
 inline constexpr mjMap fcomp_map[] = {

@@ -1614,12 +1614,11 @@ The full list of processing steps applied by the compiler to each mesh is as fol
 
    :at-val:`grid` (count[3], spacing[3], [dim])
       A regular grid of vertices. If ``dim`` is 3 (default), creates a volumetric tetrahedral mesh. If ``dim`` is 2,
-      creates a triangulated 2D surface mesh. If ``dim`` is 1, creates ordered nodes only, which can be used by
-      flexcomp but not by geoms.
+      creates a triangulated 2D surface mesh.
 
       **count**: 3 integers > 0: Number of vertices along each axis; must be 1 along the axes beyond ``dim``.
       |br| **spacing**: 3 reals: Spacing between grid points along each axis.
-      |br| **dim**: optional integer in [1, 3] (default 3): Mesh dimensionality.
+      |br| **dim**: optional integer in [2, 3] (default 3): Mesh dimensionality.
 
    :at-val:`box` (count[3], spacing[3], [dim])
       A procedural box mesh. If ``dim`` is 3 (default), creates a volumetric tetrahedral mesh. If ``dim`` is 2,
@@ -1656,13 +1655,6 @@ The full list of processing steps applied by the compiler to each mesh is as fol
 
       **count**: 3 integers (first 2 must be > 0, last must be 1): Number of vertices along the radial and angular
       directions.
-      |br| **spacing**: 3 reals: Spacing along each axis.
-
-   :at-val:`circle` (count[3], spacing[3])
-      A 1D circular mesh of ordered nodes, which can be used by flexcomp but not by geoms.
-
-      **count**: 3 integers (first must be >= 4): Number of grid points around the circle; the last point coincides
-      with the first, so ``count[0] - 1`` nodes are created.
       |br| **spacing**: 3 reals: Spacing along each axis.
 
 .. _asset-mesh-params:
@@ -2317,9 +2309,9 @@ defined. Its body name is automatically defined as "world".
    can be expensive. Trees initialized as sleeping can be placed in unstable configurations like deep penetration or in
    mid-air, but will only move when woken up. Also note that this policy can fail. For example if a tree marked as
    sleep="init" is in contact with a tree not marked as such (i.e., they are in the same :ref:`island<soIsland>`) then
-   it is impossible to put the tree to sleep; such `models
-   <https://github.com/google-deepmind/mujoco/blob/main/test/engine/testdata/sleep/init_island_fail.xml>`__ will lead to
-   a compilation error.
+   it is impossible to put the tree to sleep; for such `models
+   <https://github.com/google-deepmind/mujoco/blob/main/test/engine/testdata/sleep/init_island_fail.xml>`__ a warning
+   is issued and the trees which could not be slept start awake.
 
    See :ref:`implementation notes<siSleep>` for more details.
 
@@ -4078,6 +4070,18 @@ saving the XML:
    specified in :ref:`mesh assets<asset-mesh>`, excluding the legacy .msh format. Volumetric meshes are supported only
    in GMSH format. See :ref:`here<gmsh-file-docs>` for more information on GMSH files.
 
+.. _body-flexcomp-mesh:
+
+:at:`mesh`: :at-val:`string, optional`
+   The name of a :ref:`mesh asset<asset-mesh>` from which a **surface** (triangular) or **volumetric** (tetrahedral)
+   mesh is referenced. Can be used in place of :at:`file`. If specified without an explicit :at:`type`, the flexcomp
+   type defaults to ``mesh``; any type other than ``mesh`` or ``gmsh`` is an error. The asset's :at:`scale`,
+   :at:`refpos` and :at:`refquat` are applied to the vertices and volumetric nodes, which are otherwise expressed in the
+   frame of the asset, so that the flex coincides with a geom using the same mesh at the same position. In contrast,
+   :at:`file` uses the raw file coordinates. For :at:`dim` = 3, :at:`origin` is expressed in the same frame. The mesh
+   asset is read when the flexcomp is expanded, i.e. when the model is parsed or :ref:`mjs_makeFlex` is called, so later
+   changes to the mesh asset do not affect the flex.
+
 .. _body-flexcomp-rigid:
 
 :at:`rigid`: :at-val:`[true, false], "false"`
@@ -4316,6 +4320,7 @@ the saved XML file. Note that this element is a subset of the functionality of t
 :at:`frame`: :at-val:`string, optional`
    Name of the frame in the child model to attach here. If neither this attribute nor :ref:`body<body-attach-body>` is
    specified (only one allowed), the contents of the world body will be attached in a new :ref:`frame<body-frame>`.
+   Frames which enclose it in the child model are not attached.
 
 .. _body-attach-prefix:
 
@@ -4361,6 +4366,95 @@ transformation they encode is accumulated in their direct children; frames are p
 
 :at:`quat`, :at:`axisangle`, :at:`xyaxes`, :at:`zaxis`, :at:`euler`
    See :ref:`COrientation`.
+
+.. _frame-scale:
+
+:at:`scale`: :at-val:`real(1 or 3), "1"`
+   Resizes everything inside the frame. Bodies, geoms, sites, joints and all other contents are scaled about the frame's
+   origin, while the frame's own :at:`pos` and orientation, which are in its parent's coordinates, are not. Scaling
+   happens at compile time: the spec keeps the authored values, so changing the scale and recompiling starts again from
+   them, and a model saved as written keeps the attribute.
+
+   Three attributes work together. :at:`scale` sets the factor :math:`s` of lengths, :ref:`massscale<frame-massscale>`
+   the factor :math:`m` of masses, by default :math:`s^3` (the same material), and :ref:`scaling<frame-scaling>` decides
+   whether forces, stiffnesses and actuator gains follow (``similar``, the default) or keep their authored values
+   (``geometry``). Typical uses:
+
+   .. list-table::
+      :header-rows: 1
+      :widths: 60 40
+
+      * - intent
+        - attributes
+      * - a copy which moves like the original, in proportionally scaled gravity
+        - ``scale="s"``
+      * - a larger or smaller body of the same material, with the same motors and springs
+        - ``scale="s" scaling="geometry"``
+      * - a larger or smaller body of the same mass
+        - ``scale="s" scaling="geometry" massscale="1"``
+      * - a heavier or lighter body of the same size, e.g. a payload
+        - ``massscale="k" scaling="geometry"``
+      * - a change of the units of length and mass
+        - ``scale="s" massscale="k"``
+      * - a body stretched along the frame's axes, see below
+        - ``scale="sx sy sz" scaling="geometry"``
+
+   Scales of nested frames compose by multiplication. A single value applies to all three axes. Values must be finite
+   and positive.
+
+   Three different values stretch the contents along the frame's axes, which requires :at:`scaling` "geometry".
+   Positions are mapped exactly and orientations are kept, so each shape inside is stretched in its own coordinates,
+   which only some shapes can represent:
+
+   - meshes always, with an instance of the mesh for each distinct stretch;
+   - boxes, ellipsoids, planes and height fields aligned with the frame's axes;
+   - capsules and cylinders aligned with the frame's axes and stretched equally across their own axis. The caps of a
+     capsule stay hemispherical: with :math:`a` the factor across its axis and :math:`c` the factor along it, its
+     radius :math:`r` becomes :math:`a r` and its half-length :math:`h` becomes :math:`c h`, so that its total length
+     is :math:`2 (c h + a r)` rather than :math:`2 c (h + r)`;
+   - spheres only when scaled uniformly; use an ellipsoid otherwise.
+
+   Hinge and slide joints must also be aligned with the frame's axes. Anything else is a compile error; alignment is
+   checked to within about 2 degrees. Sites are never an error: a site box, ellipsoid, capsule or cylinder is stretched
+   by the factor along each of its own axes, with the radius of a capsule or cylinder taking the geometric mean of the
+   two factors across it, which is approximate when the site is not aligned. Explicit inertias transform exactly.
+   Sphere sites, and lengths without a direction like margins, contact widths and tendon widths, take the geometric mean
+   of the three factors.
+
+   A mesh or height field used at several scales compiles to an instance per scale; the first keeps its name and the
+   others are named ``name@1``, ``name@2``, ... A model saved compiled writes a mesh instance which is not stretched
+   along its own axes as vertices and faces; its texture coordinates are kept only if they are given per vertex, and its
+   normals are recomputed. The bones of a skin must have the same scale, and elements with plugins and tactile sensors
+   cannot be scaled.
+
+.. _frame-scaling:
+
+:at:`scaling`: :at-val:`[similar, geometry], "similar"`
+   What changes along with size and mass. With :math:`s` the :at:`scale` and :math:`m` the :at:`massscale`:
+
+   similar
+     A change of the units of length and mass: every quantity of dimension :math:`L^a M^b T^c` is multiplied by
+     :math:`s^a m^b`. Positions and sizes are multiplied by :math:`s`, masses by :math:`m`, rotational inertias and
+     torques by :math:`m s^2`, forces by :math:`m s`, the stiffness of a slide joint by :math:`m`; times and angles are
+     unchanged. The scaled model moves exactly like the original would in gravity :math:`g/s`. Gravity itself is not
+     scaled, so relative to the model's own forces it is weaker by :math:`1/s`.
+   geometry
+     Only geometry and inertia change: lengths are multiplied by :math:`s`, masses by :math:`m` and rotational inertias
+     by :math:`m s^2`, while stiffness, damping, armature, friction loss, force limits and actuator gains keep their
+     authored values. Quantities specified in the time domain, like :ref:`springdamper<body-joint-springdamper>` or a
+     servo's :at:`dampratio`, keep that specification, so the stiffness and damping computed from them follow the
+     inertia.
+
+   The policy applies to this frame's :at:`scale` and :at:`massscale` only, and is not inherited by nested frames.
+
+.. _frame-massscale:
+
+:at:`massscale`: :at-val:`real, "0"`
+   Factor :math:`m` of the masses of the frame's contents: masses are multiplied by :math:`m`, rotational inertias by
+   :math:`m s^2` and densities by :math:`m / s^3`. The default 0 means :math:`m = s_x s_y s_z`, the ratio of volumes,
+   which keeps densities constant. Under ``similar`` scaling :math:`m` is also the factor of the unit of mass, which
+   forces follow. Values must be finite and non-negative. Factors of nested frames compose by multiplication, so
+   :at:`massscale` "1" in an inner frame is relative to the enclosing frames.
 
 
 
@@ -9620,10 +9714,12 @@ visualization should somehow be simplified.
 .. _visual-quality-offsamples:
 
 :at:`offsamples`: :at-val:`int, "4"`
-   This attribute specifies the number of multi-samples for offscreen rendering. Larger values produce better
-   anti-aliasing but can slow down the GPU. Set this to 0 to disable multi-sampling. Note that this attribute only
-   affects offscreen rendering. For regular window rendering, multi-sampling is specified in an OS-dependent way when
-   the OpenGL context for the window is first created, and cannot be changed from within MuJoCo.
+   This attribute specifies the number of multi-samples for anti-aliasing. Larger values produce better
+   anti-aliasing but can slow down the GPU. Values less than or equal to 1 disable multi-sampling. In the
+   :ref:`Filament renderer<FilamentRendering>`, this attribute controls multi-sampling for window rendering and can be
+   changed at runtime. In the classic OpenGL renderer, it only affects offscreen rendering; for window rendering,
+   multi-sampling is specified in an OS-dependent way when the OpenGL context is first created, and cannot be changed
+   from within MuJoCo.
    |br| When rendering segmentation images, multi-sampling is automatically disabled so as not to average segmentation
    indices. However, some rendering backends ignore the automatic disabling. If your segmentation images contain bad
    indices, try manually setting this attribute to 0.

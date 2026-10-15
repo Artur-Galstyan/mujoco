@@ -22,149 +22,42 @@
 #include <mujoco/mjmacro.h>
 #include <mujoco/mjmodel.h>
 #include <mujoco/mjtype.h>
-#include "engine/engine_memory.h"        // mj_arenaAllocByte, mjSTACKALLOC
-#include "engine/engine_util_blas.h"     // mju_dot3, mju_mulMatVec3
-#include "engine/engine_util_errmem.h"   // mju_warning
-
-static inline mjtNum min2(mjtNum a, mjtNum b) { return a < b ? a : b; }
+#include "engine/engine_collision_primitive.h"
+#include "engine/engine_memory.h"
+#include "engine/engine_util_blas.h"
+#include "engine/engine_util_errmem.h"
+#include "engine/engine_util_misc.h"
 
 
 // point-triangle: distance, closest point cp, barycentric weights w of cp (for the barrier
 // gradient).
-// TODO(consolidation): same closest-point-on-triangle math as mjraw_SphereTriangle
-// (engine_collision_primitive.c) and GJK's S2D -- NOT a duplicate by accident. The barrier
-// gradient/Hessian needs the BARYCENTRIC weights w (to spread the reaction onto the 3 verts), which
-// mjraw_SphereTriangle never forms (it finds the closest 3D point in a rotated frame, no w), and it
-// early-exits on margin so it can't return the unconditional signed distance this module uses in
-// broadphase/CCD. Reuse = factor the core out of mjraw_SphereTriangle AND add a barycentric output
-// (a collision-core change), not a drop-in arg add; deferred (regression-risky, small payoff).
 mjtNum mjc_PtTri(const mjtNum* p, const mjtNum* a, const mjtNum* b, const mjtNum* c, mjtNum* cp,
                  mjtNum* w) {
-  mjtNum ab[3], ac[3], ap[3];
+  mjc_triWeights(w, p, a, b, c);
   for (int k=0; k < 3; k++) {
-    ab[k] = b[k] - a[k];
-    ac[k] = c[k] - a[k];
-    ap[k] = p[k] - a[k];
+    cp[k] = w[0] * a[k] + w[1] * b[k] + w[2] * c[k];
   }
-  mjtNum d1 = mju_dot3(ab, ap), d2 = mju_dot3(ac, ap);
-  if (d1 <= 0 && d2 <= 0) {
-    w[0] = 1;
-    w[1] = 0;
-    w[2] = 0;
-  } else {
-    mjtNum bp[3];
-    for (int k=0; k < 3; k++) bp[k] = p[k] - b[k];
-    mjtNum d3 = mju_dot3(ab, bp), d4 = mju_dot3(ac, bp);
-    if (d3 >= 0 && d4 <= d3) {
-      w[0] = 0;
-      w[1] = 1;
-      w[2] = 0;
-    } else {
-      mjtNum vc = d1 * d4 - d3 * d2;
-      if (vc <= 0 && d1 >= 0 && d3 <= 0) {
-        mjtNum t = d1 / (d1 - d3);
-        w[0] = 1 - t;
-        w[1] = t;
-        w[2] = 0;
-      } else {
-        mjtNum cq[3];
-        for (int k=0; k < 3; k++) cq[k] = p[k] - c[k];
-        mjtNum d5 = mju_dot3(ab, cq), d6 = mju_dot3(ac, cq);
-        if (d6 >= 0 && d5 <= d6) {
-          w[0] = 0;
-          w[1] = 0;
-          w[2] = 1;
-        } else {
-          mjtNum vb = d5 * d2 - d1 * d6;
-          if (vb <= 0 && d2 >= 0 && d6 <= 0) {
-            mjtNum t = d2 / (d2 - d6);
-            w[0] = 1 - t;
-            w[1] = 0;
-            w[2] = t;
-          } else {
-            mjtNum va = d3 * d6 - d5 * d4;
-            if (va <= 0 && (d4 - d3) >= 0 && (d5 - d6) >= 0) {
-              mjtNum t = (d4 - d3) / ((d4 - d3) + (d5 - d6));
-              w[0] = 0;
-              w[1] = 1 - t;
-              w[2] = t;
-            } else {
-              mjtNum den = 1.0 / (va + vb + vc), t = vb * den, u = vc * den;
-              w[0] = 1 - t - u;
-              w[1] = t;
-              w[2] = u;
-            }
-          }
-        }
-      }
-    }
-  }
-  for (int k=0; k < 3; k++) cp[k] = w[0] * a[k] + w[1] * b[k] + w[2] * c[k];
   mjtNum dd[3];
-  for (int k=0; k < 3; k++) dd[k] = p[k] - cp[k];
-  return sqrt(mju_dot3(dd, dd));
+  mju_sub3(dd, p, cp);
+  return mju_sqrt(mju_dot3(dd, dd));
 }
 
 
 // closest distance between segment p1p2 and segment q1q2; closest points cp1, cp2 and the segment
 // parameters st = {s, t} (cp1 = p1+s*(p2-p1), cp2 = q1+t*(q2-q1)).
-// TODO(consolidation): same segment-segment math as mjraw_CapsuleCapsule's NON-parallel branch
-// (engine_collision_primitive.c:442-470, identical x1/x2 clip). Kept separate because contact-gen
-// returns (s,t) (mjraw_ discards them into mjraw_SphereSphere), the PARALLEL branch diverges
-// (mjraw_ emits up to TWO contacts at the overlap ends -- a contact-gen stability trick -- vs the
-// mollifier), and mjraw_ early-exits on margin. Reuse needs a non-static closest-point primitive
-// factored out, not an arg add; deferred.
-// TODO(mollifier): no parallel-edge mollifier yet -- the near-parallel branch falls back to s=0
-// (fine for non-parallel crossings) but gives a DISCONTINUOUS edge-edge gap gradient the Newton
-// step feels. Add the Li-et-al EE mollifier (smooth vanish as |e1 x e2| -> 0) if/when near-parallel
-// EE contacts (folded/stacked cloth) start to bite.
 mjtNum mjc_SegSeg(const mjtNum* p1, const mjtNum* p2, const mjtNum* q1, const mjtNum* q2,
                   mjtNum* cp1, mjtNum* cp2, mjtNum* st) {
-  mjtNum d1[3], d2[3], rr[3];
+  mjtNum w[4];
+  mjc_segWeights(w, p1, p2, q1, q2);
+  st[0] = w[0];
+  st[1] = w[1];
   for (int k=0; k < 3; k++) {
-    d1[k] = p2[k] - p1[k];
-    d2[k] = q2[k] - q1[k];
-    rr[k] = p1[k] - q1[k];
-  }
-  mjtNum a = mju_dot3(d1, d1), e = mju_dot3(d2, d2), fq = mju_dot3(d2, rr);
-  mjtNum s, t;
-  if (a <= 1e-12 && e <= 1e-12) {
-    s = 0;
-    t = 0;
-  } else if (a <= 1e-12) {
-    s = 0;
-    t = fq / e;
-  } else {
-    mjtNum c = mju_dot3(d1, rr);
-    if (e <= 1e-12) {
-      t = 0;
-      s = -c / a;
-    } else {
-      mjtNum b = mju_dot3(d1, d2), den = a * e - b * b;
-      s = (den > 1e-12) ? (b * fq - c * e) / den
-                        : 0.0;  // parallel: s=0 (mollifier territory, deferred)
-      s = (s < 0) ? 0 : (s > 1 ? 1 : s);
-      t = (b * s + fq) / e;
-      if (t < 0) {
-        t = 0;
-        s = -c / a;
-      } else if (t > 1) {
-        t = 1;
-        s = (b - c) / a;
-      }
-    }
-  }
-  s = (s < 0) ? 0 : (s > 1 ? 1 : s);
-  t = (t < 0) ? 0 : (t > 1 ? 1 : t);
-  st[0] = s;
-  st[1] = t;
-  for (int k=0; k < 3; k++) {
-    cp1[k] = p1[k] + s * d1[k];
-    cp2[k] = q1[k] + t * d2[k];
+    cp1[k] = p1[k] + st[0] * (p2[k] - p1[k]);
+    cp2[k] = q1[k] + st[1] * (q2[k] - q1[k]);
   }
   mjtNum dd[3];
-  for (int k=0; k < 3; k++) dd[k] = cp1[k] - cp2[k];
-  return sqrt(mju_dot3(dd, dd));
+  mju_sub3(dd, cp1, cp2);
+  return mju_sqrt(mju_dot3(dd, dd));
 }
 
 
@@ -1154,7 +1047,7 @@ int mjc_candidates(const mjModel* m, mjData* d, const mjtNum* x, const mjtNum* g
       if (!fok[k * nfd + kv]) continue;  // filtered flex pair
       // per-pair band: the thinner flex sets it, capped by the global band; the reach adds the
       // travel of both sides, the BVH query the tree's staleness as well
-      mjtNum thv = 3.0 * min2(ghat, min2(radii[v], rk)) + dl[v] + fsweep[k];
+      mjtNum thv = 3.0 * mju_min(ghat, mju_min(radii[v], rk)) + dl[v] + fsweep[k];
       mjtNum bv = thv + radii[v] + fstale[k];
       mjtNum qh[3] = {bv, bv, bv};
       int n = bvhBox(m, d, fk, &x[3 * v], qh, stk, outel, ne_k);
@@ -1179,7 +1072,7 @@ int mjc_candidates(const mjModel* m, mjData* d, const mjtNum* x, const mjtNum* g
         int a1 = off_j + m->flex_edge[2 * (ea_j + e1)],
             b1 = off_j + m->flex_edge[2 * (ea_j + e1) + 1];
         // per-pair band plus the travel of both sides; the query adds the tree's staleness
-        mjtNum the = 3.0 * min2(ghat, min2(radii[a1], rk)) + (dl[a1] > dl[b1] ? dl[a1] : dl[b1]) +
+        mjtNum the = 3.0 * mju_min(ghat, mju_min(radii[a1], rk)) + (dl[a1] > dl[b1] ? dl[a1] : dl[b1]) +
                      fsweep[k];
         mjtNum qc[3], qh[3];
         for (int kk=0; kk < 3; kk++) {

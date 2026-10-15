@@ -28,9 +28,9 @@ import math
 
 import mujoco
 from mujoco.experimental.studio import messages
+from mujoco.experimental.studio import plugin
 from mujoco.experimental.studio import sim
 from mujoco.experimental.studio import ux
-from mujoco.experimental.studio import viewer_handle
 
 
 @dataclasses.dataclass(frozen=True)
@@ -59,21 +59,27 @@ class SimHistorySnapshot(messages.Snapshot):
     space.
 
   Attributes:
-    size: Total number of frames stored in the sim's history.  Left at 0 in
-      the viewer-to-sim direction (the sim ignores it).
-    index: History offset in the sim's index space; 0 is the most recent
-      state, negative values go further into the past.
-    head_time: Simulation timestamp at the head of the history buffer
-      (index 0). Left at 0.0 in the viewer-to-sim direction (the sim ignores
-      it).
+    size: Total number of frames stored in the sim's history.  Left at 0 in the
+      viewer-to-sim direction (the sim ignores it).
+    index: History offset in the sim's index space; 0 is the most recent state,
+      negative values go further into the past.
+    head_time: Simulation timestamp at the head of the history buffer (index 0).
+      Left at 0.0 in the viewer-to-sim direction (the sim ignores it).
   """
 
   size: int = 0
   index: int = 0
   head_time: float = 0.0
 
+  @classmethod
+  def from_ux_state(cls, ux_state: ux.UxState) -> 'SimHistorySnapshot | None':
+    """Packs the current scrub index of ``ux_state`` into a snapshot."""
+    if ux_state.history_size <= 0:
+      return None
+    return cls(index=ux_state.history_index)
 
-class SimHistory:
+
+class SimHistory(plugin.SimPlugin):
   """Sim-side plugin for simulation history recording and scrubbing.
 
   Owns the authoritative history buffer, records a frame after every physics
@@ -84,7 +90,6 @@ class SimHistory:
   def __init__(self) -> None:
     self.sim_history = sim.SimHistory()
     self._ux_state = ux.UxState()
-    self._handle: viewer_handle.ViewerHandle | None = None
     self._model: mujoco.MjModel | None = None
     self._last_recorded_time = math.inf
 
@@ -99,11 +104,6 @@ class SimHistory:
       )
 
   # -- Event handlers ---------------------------------------------------------
-
-  @messages.handler(priority=messages.Priority.INTERNAL)
-  def _on_sim_init(self, event: viewer_handle.SimInitEvent) -> None:
-    """Caches the handle reference on startup."""
-    self._handle = event.handle
 
   @messages.handler(priority=messages.Priority.INTERNAL)
   def _on_post_model(self, event: messages.PostModelEvent) -> None:

@@ -477,6 +477,60 @@ class MuJoCoBindingsTest(parameterized.TestCase):
     np.testing.assert_allclose(opt2.timestep, 0.001)
     np.testing.assert_allclose(opt2.gravity, [2, 2, 2])
 
+  def test_mjmodel_and_mjvisual_substruct_assignment(self):
+    # Assigning to model.opt copies into the model and updates existing views.
+    gravity_view = self.model.opt.gravity
+    opt = mujoco.MjOption()
+    opt.timestep = 0.001
+    opt.gravity = (0, 0, -1)
+    self.model.opt = opt
+    self.assertEqual(self.model.opt, opt)
+    np.testing.assert_allclose(self.model.opt.timestep, 0.001)
+    np.testing.assert_array_equal(gravity_view, [0, 0, -1])
+    # The model holds a copy: later edits to opt do not propagate.
+    opt.timestep = 0.5
+    opt.gravity = (1, 2, 3)
+    np.testing.assert_allclose(self.model.opt.timestep, 0.001)
+    np.testing.assert_array_equal(self.model.opt.gravity, [0, 0, -1])
+
+    # Same for model.stat: in-place copy, existing array views stay valid.
+    stat = mujoco.MjStatistic()
+    stat.extent = 42.0
+    stat.center = (1, 2, 3)
+    center_view = self.model.stat.center
+    self.model.stat = stat
+    self.assertEqual(self.model.stat, stat)
+    np.testing.assert_array_equal(center_view, [1, 2, 3])
+
+    # Assigning a whole MjVisual updates views into its nested sub-structs.
+    vis = copy.copy(self.model.vis)
+    vis.global_.fovy = 75
+    vis.quality.shadowsize = 2048
+    vis.headlight.ambient = (0.2, 0.3, 0.4)
+    vis.map.stiffness = 200.0
+    vis.scale.framelength = 2.5
+    vis.rgba.fog = (0.1, 0.2, 0.3, 0.4)
+    ambient_view = self.model.vis.headlight.ambient
+    fog_view = self.model.vis.rgba.fog
+    self.model.vis = vis
+    self.assertEqual(self.model.vis, vis)
+    np.testing.assert_allclose(ambient_view, [0.2, 0.3, 0.4])
+    np.testing.assert_allclose(fog_view, [0.1, 0.2, 0.3, 0.4])
+
+    # Sub-structs with array fields (headlight) are assignable directly.
+    headlight = copy.copy(self.model.vis.headlight)
+    headlight.diffuse = (0.5, 0.6, 0.7)
+    self.model.vis.headlight = headlight
+    np.testing.assert_allclose(
+        self.model.vis.headlight.diffuse, [0.5, 0.6, 0.7]
+    )
+
+    # Sub-structs with only scalar fields (global_) are assignable too.
+    global_vis = copy.copy(self.model.vis.global_)
+    global_vis.fovy = 60
+    self.model.vis.global_ = global_vis
+    self.assertEqual(self.model.vis.global_.fovy, 60)
+
   def test_mjmodel_can_copy(self):
     model_copy = copy.copy(self.model)
 
@@ -837,6 +891,7 @@ class MuJoCoBindingsTest(parameterized.TestCase):
         name: span(name)
         for name in dir(data)
         if name.startswith(('efc_Y', 'efc_AR', 'efm_')) and name != 'efm_active'
+        and not getattr(data, name).flags.owndata
     }
 
     # grow the islands: the new island arrays must not overlap the later ones
@@ -856,6 +911,58 @@ class MuJoCoBindingsTest(parameterized.TestCase):
       for other, (other_start, other_end) in later.items():
         overlap = start < other_end and other_start < end
         self.assertFalse(overlap, f'{name} overlaps {other}')
+
+  def test_unallocated_arena_arrays_are_filled(self):
+    model = mujoco.MjModel.from_xml_string("""
+<mujoco>
+  <option>
+    <flag island="disable"/>
+  </option>
+  <worldbody>
+    <site name="a"/>
+    <body>
+      <joint name="hinge" axis="0 1 0" range="-1 1"/>
+      <geom size=".1" pos="0 0 -.5"/>
+      <site name="b" pos="0 0 -1"/>
+    </body>
+  </worldbody>
+  <tendon>
+    <spatial range="0 2">
+      <site site="a"/>
+      <site site="b"/>
+    </spatial>
+  </tendon>
+  <actuator>
+    <motor joint="hinge"/>
+  </actuator>
+</mujoco>
+""")
+    none_index = ('tendon_efcadr', 'tree_island', 'dof_island')
+
+    # unallocated arrays own their data, allocated ones are views of mjData
+    def assert_unallocated_are_filled(data):
+      unallocated = [
+          name for name in dir(data)
+          if isinstance(arr := getattr(data, name), np.ndarray)
+          and arr.flags.owndata and arr.size > 0
+      ]
+      self.assertNotEmpty(unallocated)
+      for name in unallocated:
+        fill = -1 if name in none_index else 0
+        np.testing.assert_array_equal(getattr(data, name), fill, err_msg=name)
+      return unallocated
+
+    data = mujoco.MjData(model)
+    self.assertIn('tendon_efcadr', assert_unallocated_are_filled(data))
+
+    # joint limit violated, islands disabled: nefc-sized island arrays are NULL
+    data.qpos[0] = 2
+    mujoco.mj_forward(model, data)
+    self.assertGreater(data.nefc, 0)
+    self.assertIn('efc_island', assert_unallocated_are_filled(data))
+
+    # allocated arena arrays are views of mjData
+    self.assertFalse(data.tendon_efcadr.flags.owndata)
 
   def test_mj_struct_list_equality(self):
     model2 = mujoco.MjModel.from_xml_string(TEST_XML)

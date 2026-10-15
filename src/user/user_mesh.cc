@@ -75,7 +75,6 @@ using mujoco::user::FilePath;
 using mujoco::user::PairHash;
 using std::cos;
 using std::max;
-using std::min;
 using std::pow;
 using std::sin;
 
@@ -297,6 +296,9 @@ void mjCMesh::NameSpace(const mjCModel* m) {
 
 void mjCMesh::CopyFromSpec() {
   *static_cast<mjsMesh*>(this) = spec;
+  if (InstanceDiagonal()) {
+    for (int i = 0; i < 3; i++) { scale[i] *= instancemap_[4 * i]; }
+  }
 
   file_         = spec_file_;
   content_type_ = spec_content_type_;
@@ -320,6 +322,12 @@ void mjCMesh::CopyFromSpec() {
   szgraph_ = 0;
   center_  = nullptr;
   graph_   = nullptr;
+  halfedge_.clear();
+  tree_ = mjCBoundingVolumeHierarchy();
+  face_aabb_.clear();
+  octree_.Clear();
+  mjuu_setvec(aamm_, 1e10, 1e10, 1e10);
+  mjuu_setvec(aamm_ + 3, -1e10, -1e10, -1e10);
 }
 
 
@@ -343,6 +351,9 @@ void mjCMesh::LoadSDF() {
                    id);
   }
 
+  if (instancemap_ != decltype(instancemap_){1, 0, 0, 0, 1, 0, 0, 0, 1}) {
+    throw mjCError(this, "SDF mesh '%s' cannot be scaled by a frame", name.c_str());
+  }
   if (scale[0] != 1 || scale[1] != 1 || scale[2] != 1) {
     throw mjCError(this,
                    "attribute scale is not compatible with SDFs in mesh '%s', (id = %d)",
@@ -449,6 +460,8 @@ void mjCMesh::CacheMesh(mjCCache* cache, const mjResource* resource) {
   mesh->face_         = face_;
   mesh->facenormal_   = facenormal_;
   mesh->facetexcoord_ = facetexcoord_;
+  mesh->node_         = node_;
+  mesh->tet_          = tet_;
   mesh->halfedge_     = halfedge_;
   mesh->szgraph_      = szgraph_;
   if (szgraph_) {
@@ -499,7 +512,34 @@ void mjCMesh::CacheMesh(mjCCache* cache, const mjResource* resource) {
         const mjCMesh* mesh = static_cast<const mjCMesh*>(data);
         delete mesh;
       });
-  cache->Insert("", resource->name, resource, cached_data, size);
+  cache->Insert("", CacheId(resource), resource, cached_data, size);
+}
+
+
+// id of the mesh in the asset cache: that of its file, and its factor for an instance at another
+// scale
+std::string mjCMesh::CacheId(const mjResource* resource) const {
+  const auto& m = instancemap_;
+  if (InstanceDiagonal() && m[0] == m[4] && m[4] == m[8]) {
+    if (m[0] == 1) { return resource->name; }
+    char factor[32];
+    std::snprintf(factor, sizeof(factor), "@%a", m[0]);
+    return std::string(resource->name) + factor;
+  }
+  std::string id = std::string(resource->name) + "@";
+  for (double x : m) {
+    char factor[32];
+    std::snprintf(factor, sizeof(factor), "%a,", x);
+    id += factor;
+  }
+  return id;
+}
+
+
+// true if the map of this instance is diagonal, which then multiplies the scale of the mesh
+bool mjCMesh::InstanceDiagonal() const {
+  const auto& m = instancemap_;
+  return !m[1] && !m[2] && !m[3] && !m[5] && !m[6] && !m[7];
 }
 
 namespace {
@@ -625,7 +665,6 @@ void mjCMesh::LoadFromDecoder(mjResource* resource, bool remove_repeated) {
       }
       if (src_mesh->usertet) { tet_.assign(src_mesh->usertet->begin(), src_mesh->usertet->end()); }
 
-
       std::vector<float> vert(src_mesh->uservert->begin(), src_mesh->uservert->end());
       mj_deleteSpec(mesh_spec);
       ProcessVertices(vert, remove_repeated);
@@ -684,6 +723,8 @@ void mjCMesh::TryCompile(const mjVFS* vfs) {
     texcoord_.clear();
     facenormal_.clear();
     facetexcoord_.clear();
+    node_.clear();
+    tet_.clear();
     if (resource_ != nullptr) {
       mju_closeResource(resource_);
       resource_ = nullptr;
@@ -694,7 +735,7 @@ void mjCMesh::TryCompile(const mjVFS* vfs) {
     meshdir_ = FilePath(mjs_getString(compiler->meshdir));
 
     // remove path from file if necessary
-    if (model->strippath) { file_ = mjuu_strippath(file_); }
+    if (model->spec.strippath) { file_ = mjuu_strippath(file_); }
 
     mjSpec*  owning_spec = model->FindSpec(compiler);
     FilePath filename    = meshdir_ + FilePath(file_);
@@ -740,6 +781,16 @@ void mjCMesh::TryCompile(const mjVFS* vfs) {
         throw mjCError(this, "repeated facetexcoord specification");
       } else if (facetexcoord_.empty()) {
         facetexcoord_ = spec_facetexcoord_;
+      }
+      if (!node_.empty() && !spec_node_.empty()) {
+        throw mjCError(this, "repeated node specification");
+      } else if (node_.empty()) {
+        node_ = spec_node_;
+      }
+      if (!tet_.empty() && !spec_tet_.empty()) {
+        throw mjCError(this, "repeated tet specification");
+      } else if (tet_.empty()) {
+        tet_ = spec_tet_;
       }
     }
   } else if (plugin.active) {
@@ -993,6 +1044,8 @@ bool mjCMesh::LoadCachedMesh(mjCCache* cache, const mjResource* resource) {
     face_         = mesh->face_;
     facenormal_   = mesh->facenormal_;
     facetexcoord_ = mesh->facetexcoord_;
+    node_         = mesh->node_;
+    tet_          = mesh->tet_;
     halfedge_     = mesh->halfedge_;
 
     // only copy graph if needed
@@ -1032,7 +1085,7 @@ bool mjCMesh::LoadCachedMesh(mjCCache* cache, const mjResource* resource) {
   };
 
   // check that cached asset has all data
-  return cache->PopulateData(resource->name, resource, process_mesh);
+  return cache->PopulateData(CacheId(resource), resource, process_mesh);
 }
 
 
@@ -1246,6 +1299,26 @@ void mjCMesh::ApplyTransformations(double* dvert) {
     }
   }
 
+  // the map of an instance which does not multiply the scale; normals by the inverse transpose
+  if (!InstanceDiagonal()) {
+    const double* m = instancemap_.data();
+    for (int i = 0; i < nvert(); i++) { mjuu_mulvecmat(&dvert[3 * i], &dvert[3 * i], m); }
+    double cof[9] = {m[4] * m[8] - m[5] * m[7],
+                     m[5] * m[6] - m[3] * m[8],
+                     m[3] * m[7] - m[4] * m[6],
+                     m[2] * m[7] - m[1] * m[8],
+                     m[0] * m[8] - m[2] * m[6],
+                     m[1] * m[6] - m[0] * m[7],
+                     m[1] * m[5] - m[2] * m[4],
+                     m[2] * m[3] - m[0] * m[5],
+                     m[0] * m[4] - m[1] * m[3]};
+    for (int i = 0; i < nnormal(); i++) {
+      double n[3] = {normal_[3 * i], normal_[3 * i + 1], normal_[3 * i + 2]};
+      mjuu_mulvecmat(n, n, cof);
+      for (int k = 0; k < 3; k++) { normal_[3 * i + k] = (float)n[k]; }
+    }
+  }
+
   // normalize normals
   for (int i = 0; i < nnormal(); i++) {
     // compute length
@@ -1264,6 +1337,27 @@ void mjCMesh::ApplyTransformations(double* dvert) {
       normal_[3 * i + 1] = 0;
       normal_[3 * i + 2] = 1;
     }
+  }
+}
+
+
+// apply user transformations, then translate by -pos and rotate by quat^-1 (as for vertices)
+void mjCMesh::TransformNodes(const double pos[3], const double quat[4]) {
+  if (node_.empty()) { return; }
+
+  double refmat[9], mat[9];
+  double rquat[4] = {refquat[0], refquat[1], refquat[2], refquat[3]};
+  mjuu_normvec(rquat, 4);
+  mjuu_quat2mat(refmat, rquat);
+  double neg[4] = {quat[0], -quat[1], -quat[2], -quat[3]};
+  mjuu_quat2mat(mat, neg);
+
+  for (int i = 0; i < nnode(); i++) {
+    double* p = &node_[3 * i];
+    for (int j = 0; j < 3; j++) { p[j] -= refpos[j]; }
+    mjuu_mulvecmatT(p, p, refmat);
+    for (int j = 0; j < 3; j++) { p[j] = p[j] * scale[j] - pos[j]; }
+    mjuu_mulvecmat(p, p, mat);
   }
 }
 
@@ -1470,6 +1564,9 @@ void mjCMesh::Process() {
   mjuu_copyvec(pos_, CoM, 3);
   mjuu_copyvec(quat_, quattmp, 4);
 
+  // nodes (e.g. volumetric meshes) follow the same transformation as vertices
+  TransformNodes(CoM, quattmp);
+
   processed_ = true;
 
   // no radii: make
@@ -1649,6 +1746,7 @@ double mjCMesh::GetVolumeRef() const {
 
 
 // make graph describing convex hull
+// NOLINTBEGIN(misc-include-cleaner)
 void mjCMesh::MakeGraph(const double* dvert) {
   int      adr, ok, curlong, totlong, exitcode;
   facetT * facet, **facetp;
@@ -1892,6 +1990,7 @@ void mjCMesh::MakeGraph(const double* dvert) {
     throw mjCError(this, "qhull error");
   }
 }
+// NOLINTEND(misc-include-cleaner)
 
 
 // copy graph into face data
@@ -3461,6 +3560,41 @@ void mjCSkin::ResolveReferences(const mjCModel* m) {
 }
 
 
+// scale the compiled copy by the gauge of the bones: the vertices and the bind poses are given in
+// the same coordinates, in which the offsets of the vertices from the bones scale with the bones,
+// whose maps, expressed there through their bind orientations, must agree
+void mjCSkin::ApplyGauge() {
+  scaled_ = false;
+  if (bodyid.empty()) { return; }
+  std::vector<mjCGauge> gauges;
+  for (int i = 0; i < bodyid.size(); i++) {
+    const float* q       = bindquat_.data() + 4 * i;
+    double       conj[4] = {q[0], -q[1], -q[2], -q[3]};
+    gauges.push_back(model->Bodies()[bodyid[i]]->ContentGauge().Rotated(conj));
+  }
+  const mjCGauge& g = gauges[0];
+  for (const mjCGauge& b : gauges) {
+    bool same = b.uniform == g.uniform && b.shape == g.shape;
+    for (int k = 0; k < 9 && same && !g.uniform; k++) {
+      same = std::abs(b.map[k] - g.map[k]) <= 1e-6 * g.shape;
+    }
+    if (!same) { throw mjCError(this, "the bones of a skin must have the same scale"); }
+  }
+  if (g.uniform && g.shape == 1) { return; }
+  auto points = [&g](std::vector<float>& pos) {
+    for (int i = 0; i < pos.size() / 3; i++) {
+      double x[3] = {pos[3 * i], pos[3 * i + 1], pos[3 * i + 2]};
+      g.Point(x);
+      for (int k = 0; k < 3; k++) { pos[3 * i + k] = (float)x[k]; }
+    }
+  };
+  points(vert_);
+  points(bindpos_);
+  inflate *= g.Shape(1);
+  scaled_  = true;
+}
+
+
 // compiler
 void mjCSkin::Compile(const mjVFS* vfs) {
   CopyFromSpec();
@@ -3480,7 +3614,7 @@ void mjCSkin::Compile(const mjVFS* vfs) {
     }
 
     // remove path from file if necessary
-    if (model->strippath) { file_ = mjuu_strippath(file_); }
+    if (model && model->spec.strippath) { file_ = mjuu_strippath(file_); }
 
     // load SKN
     std::string ext = mjuu_getext(file_);
@@ -3531,6 +3665,7 @@ void mjCSkin::Compile(const mjVFS* vfs) {
 
   // resolve body names
   ResolveReferences(model);
+  ApplyGauge();
 
   // resolve material name
   mjCBase* pmat = model->FindObject(mjOBJ_MATERIAL, material_);

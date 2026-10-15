@@ -118,6 +118,7 @@ def _forward_shim(
     body_rootid: wp.array[int],
     body_simple: wp.array[int],
     body_subtreemass: wp.array2d[float],
+    body_subtreenum: wp.array[int],
     body_tree: tuple[wp.array[int], ...],
     body_treeid: wp.array[int],
     body_weldid: wp.array[int],
@@ -270,6 +271,7 @@ def _forward_shim(
     geom_type: wp.array[int],
     has_1d_flex: bool,
     has_3d_flex: bool,
+    has_boxbox_margin: bool,
     has_efm_actuator: bool,
     has_ellipsoid_geom: bool,
     has_flex_passive: bool,
@@ -366,6 +368,7 @@ def _forward_shim(
     nmesh: int,
     nmeshdegmax: int,
     nmeshface: int,
+    npair: int,
     npolygonmax: int,
     nrangefinder: int,
     nsensorcollision: int,
@@ -388,6 +391,8 @@ def _forward_shim(
     pair_dim: wp.array[int],
     pair_friction: wp.array2d[mjwp_types.vec5],
     pair_gap: wp.array2d[float],
+    pair_geom1: wp.array[int],
+    pair_geom2: wp.array[int],
     pair_margin: wp.array2d[float],
     pair_solimp: wp.array2d[mjwp_types.vec5],
     pair_solref: wp.array2d[wp.vec2],
@@ -494,6 +499,8 @@ def _forward_shim(
     opt__ls_iterations: int,
     opt__ls_tolerance: wp.array[float],
     opt__magnetic: wp.array[wp.vec3],
+    opt__noslip_iterations: int,
+    opt__noslip_tolerance: wp.array[float],
     opt__run_collision_detection: bool,
     opt__run_rne_postconstraint: bool,
     opt__sdf_initpoints: int,
@@ -767,6 +774,7 @@ def _forward_shim(
   _m.body_rootid = body_rootid
   _m.body_simple = body_simple
   _m.body_subtreemass = body_subtreemass
+  _m.body_subtreenum = body_subtreenum
   _m.body_tree = body_tree
   _m.body_treeid = body_treeid
   _m.body_weldid = body_weldid
@@ -919,6 +927,7 @@ def _forward_shim(
   _m.geom_type = geom_type
   _m.has_1d_flex = has_1d_flex
   _m.has_3d_flex = has_3d_flex
+  _m.has_boxbox_margin = has_boxbox_margin
   _m.has_efm_actuator = has_efm_actuator
   _m.has_ellipsoid_geom = has_ellipsoid_geom
   _m.has_flex_passive = has_flex_passive
@@ -1015,6 +1024,7 @@ def _forward_shim(
   _m.nmesh = nmesh
   _m.nmeshdegmax = nmeshdegmax
   _m.nmeshface = nmeshface
+  _m.npair = npair
   _m.npolygonmax = npolygonmax
   _m.nrangefinder = nrangefinder
   _m.nsensorcollision = nsensorcollision
@@ -1050,6 +1060,8 @@ def _forward_shim(
   _m.opt.ls_iterations = opt__ls_iterations
   _m.opt.ls_tolerance = opt__ls_tolerance
   _m.opt.magnetic = opt__magnetic
+  _m.opt.noslip_iterations = opt__noslip_iterations
+  _m.opt.noslip_tolerance = opt__noslip_tolerance
   _m.opt.run_collision_detection = opt__run_collision_detection
   _m.opt.run_rne_postconstraint = opt__run_rne_postconstraint
   _m.opt.sdf_initpoints = opt__sdf_initpoints
@@ -1064,6 +1076,8 @@ def _forward_shim(
   _m.pair_dim = pair_dim
   _m.pair_friction = pair_friction
   _m.pair_gap = pair_gap
+  _m.pair_geom1 = pair_geom1
+  _m.pair_geom2 = pair_geom2
   _m.pair_margin = pair_margin
   _m.pair_solimp = pair_solimp
   _m.pair_solref = pair_solref
@@ -1893,6 +1907,7 @@ def _forward_jax_impl(m: types.Model, d: types.Data):
           'opt__impratio_invsqrt',
           'opt__ls_tolerance',
           'opt__magnetic',
+          'opt__noslip_tolerance',
           'opt__timestep',
           'opt__tolerance',
           'opt__viscosity',
@@ -2214,6 +2229,7 @@ def _forward_jax_impl(m: types.Model, d: types.Data):
       m.body_rootid,
       m.body_simple,
       m.body_subtreemass,
+      m._impl.body_subtreenum,
       m._impl.body_tree,
       m.body_treeid,
       m.body_weldid,
@@ -2366,6 +2382,7 @@ def _forward_jax_impl(m: types.Model, d: types.Data):
       m.geom_type,
       m._impl.has_1d_flex,
       m._impl.has_3d_flex,
+      m._impl.has_boxbox_margin,
       m._impl.has_efm_actuator,
       m._impl.has_ellipsoid_geom,
       m._impl.has_flex_passive,
@@ -2462,6 +2479,7 @@ def _forward_jax_impl(m: types.Model, d: types.Data):
       m.nmesh,
       m._impl.nmeshdegmax,
       m.nmeshface,
+      m.npair,
       m._impl.npolygonmax,
       m._impl.nrangefinder,
       m._impl.nsensorcollision,
@@ -2484,6 +2502,8 @@ def _forward_jax_impl(m: types.Model, d: types.Data):
       m.pair_dim,
       m.pair_friction,
       m.pair_gap,
+      m.pair_geom1,
+      m.pair_geom2,
       m.pair_margin,
       m.pair_solimp,
       m.pair_solref,
@@ -2590,6 +2610,8 @@ def _forward_jax_impl(m: types.Model, d: types.Data):
       m.opt.ls_iterations,
       m.opt.ls_tolerance,
       m.opt.magnetic,
+      m.opt._impl.noslip_iterations,
+      m.opt._impl.noslip_tolerance,
       m.opt._impl.run_collision_detection,
       m.opt._impl.run_rne_postconstraint,
       m.opt._impl.sdf_initpoints,
@@ -3046,6 +3068,7 @@ def _step_shim(
     body_rootid: wp.array[int],
     body_simple: wp.array[int],
     body_subtreemass: wp.array2d[float],
+    body_subtreenum: wp.array[int],
     body_tree: tuple[wp.array[int], ...],
     body_treeid: wp.array[int],
     body_weldid: wp.array[int],
@@ -3198,6 +3221,7 @@ def _step_shim(
     geom_type: wp.array[int],
     has_1d_flex: bool,
     has_3d_flex: bool,
+    has_boxbox_margin: bool,
     has_efm_actuator: bool,
     has_ellipsoid_geom: bool,
     has_flex_passive: bool,
@@ -3296,6 +3320,7 @@ def _step_shim(
     nmesh: int,
     nmeshdegmax: int,
     nmeshface: int,
+    npair: int,
     npolygonmax: int,
     nrangefinder: int,
     nsensorcollision: int,
@@ -3318,6 +3343,8 @@ def _step_shim(
     pair_dim: wp.array[int],
     pair_friction: wp.array2d[mjwp_types.vec5],
     pair_gap: wp.array2d[float],
+    pair_geom1: wp.array[int],
+    pair_geom2: wp.array[int],
     pair_margin: wp.array2d[float],
     pair_solimp: wp.array2d[mjwp_types.vec5],
     pair_solref: wp.array2d[wp.vec2],
@@ -3426,6 +3453,8 @@ def _step_shim(
     opt__ls_iterations: int,
     opt__ls_tolerance: wp.array[float],
     opt__magnetic: wp.array[wp.vec3],
+    opt__noslip_iterations: int,
+    opt__noslip_tolerance: wp.array[float],
     opt__run_collision_detection: bool,
     opt__run_rne_postconstraint: bool,
     opt__sdf_initpoints: int,
@@ -3705,6 +3734,7 @@ def _step_shim(
   _m.body_rootid = body_rootid
   _m.body_simple = body_simple
   _m.body_subtreemass = body_subtreemass
+  _m.body_subtreenum = body_subtreenum
   _m.body_tree = body_tree
   _m.body_treeid = body_treeid
   _m.body_weldid = body_weldid
@@ -3857,6 +3887,7 @@ def _step_shim(
   _m.geom_type = geom_type
   _m.has_1d_flex = has_1d_flex
   _m.has_3d_flex = has_3d_flex
+  _m.has_boxbox_margin = has_boxbox_margin
   _m.has_efm_actuator = has_efm_actuator
   _m.has_ellipsoid_geom = has_ellipsoid_geom
   _m.has_flex_passive = has_flex_passive
@@ -3955,6 +3986,7 @@ def _step_shim(
   _m.nmesh = nmesh
   _m.nmeshdegmax = nmeshdegmax
   _m.nmeshface = nmeshface
+  _m.npair = npair
   _m.npolygonmax = npolygonmax
   _m.nrangefinder = nrangefinder
   _m.nsensorcollision = nsensorcollision
@@ -3990,6 +4022,8 @@ def _step_shim(
   _m.opt.ls_iterations = opt__ls_iterations
   _m.opt.ls_tolerance = opt__ls_tolerance
   _m.opt.magnetic = opt__magnetic
+  _m.opt.noslip_iterations = opt__noslip_iterations
+  _m.opt.noslip_tolerance = opt__noslip_tolerance
   _m.opt.run_collision_detection = opt__run_collision_detection
   _m.opt.run_rne_postconstraint = opt__run_rne_postconstraint
   _m.opt.sdf_initpoints = opt__sdf_initpoints
@@ -4005,6 +4039,8 @@ def _step_shim(
   _m.pair_dim = pair_dim
   _m.pair_friction = pair_friction
   _m.pair_gap = pair_gap
+  _m.pair_geom1 = pair_geom1
+  _m.pair_geom2 = pair_geom2
   _m.pair_margin = pair_margin
   _m.pair_solimp = pair_solimp
   _m.pair_solref = pair_solref
@@ -4847,6 +4883,7 @@ def _step_jax_impl(m: types.Model, d: types.Data):
           'opt__impratio_invsqrt',
           'opt__ls_tolerance',
           'opt__magnetic',
+          'opt__noslip_tolerance',
           'opt__sleep_tolerance',
           'opt__timestep',
           'opt__tolerance',
@@ -5179,6 +5216,7 @@ def _step_jax_impl(m: types.Model, d: types.Data):
       m.body_rootid,
       m.body_simple,
       m.body_subtreemass,
+      m._impl.body_subtreenum,
       m._impl.body_tree,
       m.body_treeid,
       m.body_weldid,
@@ -5331,6 +5369,7 @@ def _step_jax_impl(m: types.Model, d: types.Data):
       m.geom_type,
       m._impl.has_1d_flex,
       m._impl.has_3d_flex,
+      m._impl.has_boxbox_margin,
       m._impl.has_efm_actuator,
       m._impl.has_ellipsoid_geom,
       m._impl.has_flex_passive,
@@ -5429,6 +5468,7 @@ def _step_jax_impl(m: types.Model, d: types.Data):
       m.nmesh,
       m._impl.nmeshdegmax,
       m.nmeshface,
+      m.npair,
       m._impl.npolygonmax,
       m._impl.nrangefinder,
       m._impl.nsensorcollision,
@@ -5451,6 +5491,8 @@ def _step_jax_impl(m: types.Model, d: types.Data):
       m.pair_dim,
       m.pair_friction,
       m.pair_gap,
+      m.pair_geom1,
+      m.pair_geom2,
       m.pair_margin,
       m.pair_solimp,
       m.pair_solref,
@@ -5559,6 +5601,8 @@ def _step_jax_impl(m: types.Model, d: types.Data):
       m.opt.ls_iterations,
       m.opt.ls_tolerance,
       m.opt.magnetic,
+      m.opt._impl.noslip_iterations,
+      m.opt._impl.noslip_tolerance,
       m.opt._impl.run_collision_detection,
       m.opt._impl.run_rne_postconstraint,
       m.opt._impl.sdf_initpoints,
