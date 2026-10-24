@@ -481,7 +481,10 @@ def check_typing(cwd: Path, package: Path) -> None:
   ty = shutil.which('ty')
   ruff = shutil.which('ruff')
   assert ty and ruff, 'ty and ruff must be on PATH'
-  assert run([ty, '--version'], cwd, env).startswith('ty 0.0.85 ')
+  version = run([ty, '--version'], cwd, env)
+  assert version.split()[:2] == ['ty', '0.0.85'], (
+    f'Expected ty 0.0.85, got {version!r}'
+  )
   cmd = [
     ty,
     'check',
