@@ -20,11 +20,16 @@ the native API audit reports which optional modules are absent.
 
 ## Installation
 
-Version 3.17.0.0 is not published yet. Build and install a local wheel as shown
-below. After publication, install the companion with:
+Install the companion with:
 
 ```sh
 uv pip install typed-mujoco
+```
+
+For an existing installation, upgrade both packages with:
+
+```sh
+uv pip install --upgrade typed-mujoco mujoco
 ```
 
 ```python
@@ -72,5 +77,4 @@ checks the sdist-derived wheel too. It reports optional native modules that the
 runtime wheel does not include. CI runs independent baseline (3.17.0) and latest
 MuJoCo checks on macOS and Ubuntu, on scoped pushes and pull requests, manual
 runs, and daily at 06:17 UTC. Each CI run checks that MuJoCo still imports after
-the companion is uninstalled. This companion is not published as version
-3.17.0.0 yet.
+the companion is uninstalled.
