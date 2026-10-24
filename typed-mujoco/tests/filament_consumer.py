@@ -19,8 +19,8 @@ from numpy import typing as npt
 from typing_extensions import assert_type
 
 import mujoco
-from mujoco import _render_filament as mjrf
-from mujoco.rendering.filament import renderer
+from mujoco import mjrf
+from mujoco.rendering.filament import model_scene, renderer
 
 
 def check_filament_types(
@@ -43,7 +43,11 @@ def check_filament_types(
   assert_type(mjrf.PixelFormat.PIXEL_FORMAT_RGB8.name, str)
   assert_type(mjrf.LightType.LIGHT_SPOT.__index__(), int)
 
-  config = mjrf.ContextConfig(graphics_api=mjrf.GraphicsApi.GRAPHICS_API_OPENGL)
+  config = mjrf.ContextConfig(
+    graphics_api=mjrf.GraphicsApi.GRAPHICS_API_OPENGL, software_rendering=False
+  )
+  config.software_rendering = True
+  assert_type(config.software_rendering, bool)
   assert_type(config.graphics_api, mjrf.GraphicsApi)
   assert_type(config.native_window, int)
   cam = mjrf.Camera(pos=[0, 0, 1], forward=np.zeros(3))
@@ -67,40 +71,89 @@ def check_filament_types(
   assert_type(mesh_data.bounds_min, npt.NDArray[np.float32])
   mesh_data.set_vertices(mesh_config, b'')
   mesh_data.set_indices(mesh_config, b'')
+  mesh = ctx.create_mesh(mesh_config)
+  assert_type(mesh.upload(mesh_data), None)
   assert_type(ctx.create_mesh(mesh_config), mjrf.Mesh)
-  assert_type(ctx.create_texture(mjrf.TextureConfig()), mjrf.Texture)
+  texture = ctx.create_texture(mjrf.TextureConfig())
+  assert_type(texture.upload(mjrf.TextureData()), None)
+  assert_type(texture, mjrf.Texture)
   assert_type(ctx.create_scene(mjrf.SceneParams()), mjrf.Scene)
-  assert_type(ctx.create_light(mjrf.LightParams(color=[1, 1, 1])), mjrf.Light)
-  assert_type(ctx.create_renderable(mjrf.RenderableParams()), mjrf.Renderable)
+  light_params = mjrf.LightParams(
+    color=[1, 1, 1], cast_shadow=True, cutoff=0.5, softness=0.1
+  )
+  assert_type(light_params.cast_shadow, bool)
+  assert_type(light_params.cutoff, float)
+  assert_type(light_params.softness, float)
+  assert_type(ctx.create_light(light_params), mjrf.Light)
+  render_params = mjrf.RenderableParams(cast_shadow=True, receive_shadow=False)
+  assert_type(render_params.cast_shadow, bool)
+  assert_type(render_params.receive_shadow, bool)
+  assert_type(ctx.create_renderable(render_params), mjrf.Renderable)
   assert_type(
     ctx.create_render_target(mjrf.RenderTargetConfig()), mjrf.RenderTarget
   )
 
-  material = mjrf.Material(color=(1, 1, 1, 1))
+  material = mjrf.Material(color=(1, 1, 1, 1), decor=True)
+  assert_type(material.decor, bool)
   material.sleep_state = mujoco.mjtSleepState.mjS_AWAKE
   assert_type(material.color, npt.NDArray[np.float32])
   assert_type(renderable.get_material(), mjrf.Material)
-  renderable.set_transform([0, 0, 0], np.eye(3, dtype=np.float32).ravel())
+  renderable.set_pose([0, 0, 0], np.eye(3, dtype=np.float32).ravel())
   renderable.set_geom_mesh(mujoco.mjtGeom.mjGEOM_SPHERE, 1, 2, 3)
   assert_type(light.get_type(), int)
-  light.set_transform([0, 0, 0], [0, 0, 1])
+  light.set_active(True)
+  light.set_cast_shadow(True)
+  light.set_cutoff(0.5)
+  light.set_pose([0, 0, 0], [0, 0, 1])
   scene.configure_from_model(model)
+  assert_type(scene.set_msaa(4), None)
 
-  read = mjrf.ReadPixelsRequest(target=target)
+  read = mjrf.ReadRequest(target=target)
   read.set_buffer(memoryview(pixels))
-  request = mjrf.RenderRequest(scene=scene, target=target, camera=cam)
+  request = mjrf.RenderRequest(
+    scene=scene,
+    target=target,
+    camera=cam,
+    post_processing=True,
+    reflections=True,
+    shadows=True,
+    headlight=True,
+    headlight_color=[1.0, 1.0, 1.0],
+    headlight_intensity=1.0,
+  )
+  request.shadows = False
+  assert_type(request.headlight, bool)
+  assert_type(request.headlight_color, npt.NDArray[np.float32])
+  assert_type(request.headlight_intensity, float)
   assert_type(ctx.render([request], [read]), int)
   assert_type(ctx.get_frame_stats(0, mjrf.FrameStats()), None)
 
-  objects = mjrf.ModelObjects(ctx, model)
-  assert_type(mjrf.ModelRenderables(scene, objects).update(data), None)
-  assert_type(mjrf.ModelLights(scene, objects).update(data), None)
+  resources = mjrf.ModelResources(ctx, model)
+  renderables = mjrf.ModelRenderables(scene, resources)
+  assert_type(renderables.update(data), None)
+  assert_type(
+    renderables.get_renderable(mujoco.mjtObj.mjOBJ_GEOM, 0),
+    mjrf.Renderable | None,
+  )
+  lights = mjrf.ModelLights(scene, resources)
+  assert_type(lights.update(data), None)
+  assert_type(lights.get_light(0), mjrf.Light | None)
+  model_view = model_scene.ModelScene(ctx, model, scene)
+  assert_type(model_view.update(data), None)
+  assert_type(model_view.scene, mjrf.Scene)
+  assert_type(model_view.get_light(0), mjrf.Light | None)
+  assert_type(
+    model_view.get_renderable(mujoco.mjtObj.mjOBJ_GEOM, 0),
+    mjrf.Renderable | None,
+  )
   decorations = mjrf.ModelDecorations(ctx, scene, model)
   decorations.update(data, option, perturb, camera, mjrf.Rect(), extra_geoms)
 
   wrapper = renderer.Renderer(ctx)
+  assert_type(wrapper.context, mjrf.Context)
   assert_type(wrapper.scene('scene'), mjrf.Scene)
   assert_type(wrapper.target('rgb', pixels), mjrf.RenderTarget)
-  wrapper.view('view', scene='scene', target='rgb', camera=gl_camera)
-  wrapper.update_camera('view', cam)
-  assert_type(wrapper.render(), None)
+  view = renderer.View(scene='scene', target='rgb', camera=gl_camera)
+  assert_type(view.headlight_color, tuple[float, float, float])
+  view.camera = cam
+  assert_type(wrapper.render([view]), None)

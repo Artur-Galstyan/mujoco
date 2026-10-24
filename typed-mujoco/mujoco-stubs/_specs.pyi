@@ -189,11 +189,14 @@ class MjSpec:
     """
   def __init__(self) -> None: ...
   def activate_plugin(self, name: str) -> None: ...
+  def adopt_inertial(self, body: MjsBody, vfs: MjVfs | None = None) -> None:
+    """Make the body's inferred inertial explicit in the spec."""
   def actuator(self, arg0: str) -> MjsActuator | None: ...
   def add_actuator(
     self,
     default: MjsDefault | None = None,
     name: str | None = None,
+    type: typing.SupportsInt | typing.SupportsIndex | None = None,
     gaintype: typing.SupportsInt | typing.SupportsIndex | None = None,
     gainprm: collections.abc.Sequence[
       typing.SupportsFloat | typing.SupportsIndex
@@ -265,6 +268,7 @@ class MjSpec:
 
     Args:
       name: str
+      type: int
       gaintype: int
       gainprm: list[float]
       biastype: int
@@ -394,6 +398,11 @@ class MjSpec:
     thickness: typing.SupportsFloat | typing.SupportsIndex | None = None,
     elastic2d: typing.SupportsInt | typing.SupportsIndex | None = None,
     elastic3d: typing.SupportsInt | typing.SupportsIndex | None = None,
+    section: typing.SupportsInt | typing.SupportsIndex | None = None,
+    sectionsize: collections.abc.Sequence[
+      typing.SupportsFloat | typing.SupportsIndex
+    ]
+    | None = None,
     cellcount: collections.abc.Sequence[
       typing.SupportsFloat | typing.SupportsIndex
     ]
@@ -450,6 +459,8 @@ class MjSpec:
       thickness: float
       elastic2d: int
       elastic3d: int
+      section: int
+      sectionsize: list[float]
       cellcount: list[float]
       order: int
       nodebody: list[str]
@@ -602,6 +613,12 @@ class MjSpec:
       typing.SupportsInt | typing.SupportsIndex
     ]
     | None = None,
+    usernode: collections.abc.Sequence[
+      typing.SupportsFloat | typing.SupportsIndex
+    ]
+    | None = None,
+    usertet: collections.abc.Sequence[typing.SupportsInt | typing.SupportsIndex]
+    | None = None,
     plugin: MjsPlugin | None = None,
     material: str | None = None,
     octree_maxdepth: typing.SupportsInt | typing.SupportsIndex | None = None,
@@ -627,6 +644,8 @@ class MjSpec:
       userface: list[int]
       userfacenormal: list[int]
       userfacetexcoord: list[int]
+      usernode: list[float]
+      usertet: list[int]
       plugin: MjsPlugin
       material: str
       octree_maxdepth: int
@@ -911,6 +930,7 @@ class MjSpec:
     """
   def add_texture(
     self,
+    default: MjsDefault | None = None,
     name: str | None = None,
     type: typing.SupportsInt | typing.SupportsIndex | None = None,
     colorspace: typing.SupportsInt | typing.SupportsIndex | None = None,
@@ -940,6 +960,7 @@ class MjSpec:
     | None = None,
     hflip: typing.SupportsInt | typing.SupportsIndex | None = None,
     vflip: typing.SupportsInt | typing.SupportsIndex | None = None,
+    embed: typing.SupportsInt | typing.SupportsIndex | None = None,
     info: str | None = None,
   ) -> MjsTexture:
     """
@@ -966,6 +987,7 @@ class MjSpec:
       data: list[int]
       hflip: int
       vflip: int
+      embed: int
       info: str
     """
   def add_tuple(
@@ -1003,6 +1025,10 @@ class MjSpec:
   def compile(self, vfs: MjVfs | None = None) -> mujoco._structs.MjModel:
     """Compile this spec to an MjModel; create MjData for its state."""
   def copy(self) -> MjSpec: ...
+  def copy_back(self, model: mujoco._structs.MjModel) -> None:
+    """Copy supported model edits into this spec; raise ValueError for unsupported edits."""
+  def dedup_assets(self) -> int:
+    """Merge identical meshes and textures; return the number removed."""
   @typing.overload
   def delete(self, arg0: MjsDefault) -> None: ...
   @typing.overload
@@ -1053,6 +1079,8 @@ class MjSpec:
   def delete(self, arg0: MjsTuple) -> None: ...
   @typing.overload
   def delete(self, arg0: MjsPlugin) -> None: ...
+  def discard_visual(self, vfs: MjVfs | None = None) -> int:
+    """Discard unused visual elements; return the number removed."""
   def encode(
     self,
     filename: str,
@@ -1063,6 +1091,8 @@ class MjSpec:
   def exclude(self, arg0: str) -> MjsExclude | None: ...
   def find_default(self, arg0: str) -> MjsDefault | None: ...
   def flex(self, arg0: str) -> MjsFlex | None: ...
+  def fuse_static(self, vfs: MjVfs | None = None) -> int:
+    """Fuse static bodies into their parents; return the number fused."""
   def frame(self, arg0: str) -> MjsFrame | None: ...
   def geom(self, arg0: str) -> MjsGeom | None: ...
   def hfield(self, arg0: str) -> MjsHField | None: ...
@@ -1247,6 +1277,7 @@ class MjsDefault:
   mesh: MjsMesh
   name: str
   pair: MjsPair
+  texture: MjsTexture
   site: MjsSite
   tendon: MjsTendon
 
@@ -1255,6 +1286,7 @@ class MjsBody:
   childclass: str
   classname: MjsDefault
   explicitinertial: bool
+  fuse: int
   ialt: MjsOrientation
   info: str
   mocap: bool
@@ -1314,6 +1346,7 @@ class MjsBody:
     gravcomp: typing.SupportsFloat | typing.SupportsIndex | None = None,
     sleep: typing.SupportsInt | typing.SupportsIndex | None = None,
     simple: typing.SupportsInt | typing.SupportsIndex | None = None,
+    fuse: typing.SupportsInt | typing.SupportsIndex | None = None,
     userdata: collections.abc.Sequence[
       typing.SupportsFloat | typing.SupportsIndex
     ]
@@ -1347,6 +1380,7 @@ class MjsBody:
       gravcomp: float
       sleep: int
       simple: int
+      fuse: int
       userdata: list[float]
       explicitinertial: int
       plugin: MjsPlugin
@@ -1460,6 +1494,9 @@ class MjsBody:
     | None = None,
     euler: collections.abc.Sequence[typing.SupportsFloat | typing.SupportsIndex]
     | None = None,
+    scale: _ScalarOrArray | None = None,
+    scaling: typing.SupportsInt | typing.SupportsIndex | None = None,
+    massscale: typing.SupportsFloat | typing.SupportsIndex | None = None,
     info: str | None = None,
   ) -> MjsFrame:
     """
@@ -1474,6 +1511,9 @@ class MjsBody:
       xyaxes: list[float]
       zaxis: list[float]
       euler: list[float]
+      scale: list[float]
+      scaling: int
+      massscale: float
       info: str
     """
   def add_freejoint(
@@ -1857,6 +1897,7 @@ class MjsBody:
     ]
     | None = None,
     file: str | None = None,
+    mesh: str | None = None,
     vfs: MjVfs | None = None,
   ) -> MjsFlex: ...
   def next_body(self, arg0: MjsBody) -> MjsBody: ...
@@ -2022,6 +2063,7 @@ class MjsFrame:
     gravcomp: typing.SupportsFloat | typing.SupportsIndex | None = None,
     sleep: typing.SupportsInt | typing.SupportsIndex | None = None,
     simple: typing.SupportsInt | typing.SupportsIndex | None = None,
+    fuse: typing.SupportsInt | typing.SupportsIndex | None = None,
     userdata: collections.abc.Sequence[
       typing.SupportsFloat | typing.SupportsIndex
     ]
@@ -2055,6 +2097,7 @@ class MjsFrame:
       gravcomp: float
       sleep: int
       simple: int
+      fuse: int
       userdata: list[float]
       explicitinertial: int
       plugin: MjsPlugin
@@ -2168,6 +2211,9 @@ class MjsFrame:
     | None = None,
     euler: collections.abc.Sequence[typing.SupportsFloat | typing.SupportsIndex]
     | None = None,
+    scale: _ScalarOrArray | None = None,
+    scaling: typing.SupportsInt | typing.SupportsIndex | None = None,
+    massscale: typing.SupportsFloat | typing.SupportsIndex | None = None,
     info: str | None = None,
   ) -> MjsFrame:
     """
@@ -2182,6 +2228,9 @@ class MjsFrame:
       xyaxes: list[float]
       zaxis: list[float]
       euler: list[float]
+      scale: list[float]
+      scaling: int
+      massscale: float
       info: str
     """
   def add_geom(
@@ -2512,6 +2561,12 @@ class MjsFrame:
   @property
   def id(self) -> int: ...
   @property
+  def massscale(self) -> float: ...
+  @massscale.setter
+  def massscale(
+    self, arg1: typing.SupportsFloat | typing.SupportsIndex
+  ) -> None: ...
+  @property
   def parent(self) -> MjsBody: ...
   @property
   def pos(
@@ -2529,6 +2584,20 @@ class MjsFrame:
   ]: ...
   @quat.setter
   def quat(self, arg1: numpy.typing.ArrayLike) -> None: ...
+  @property
+  def scale(
+    self,
+  ) -> typing.Annotated[
+    numpy.typing.NDArray[numpy.float64], '[3, 1]', 'flags.writeable'
+  ]: ...
+  @scale.setter
+  def scale(self, arg1: numpy.typing.ArrayLike) -> None: ...
+  @property
+  def scaling(self) -> mujoco._enums.mjtScaling: ...
+  @scaling.setter
+  def scaling(
+    self, arg1: typing.SupportsInt | typing.SupportsIndex
+  ) -> None: ...
   @property
   def signature(self) -> int: ...
 
@@ -3147,10 +3216,49 @@ class MjsMesh:
   needsdf: bool
   plugin: MjsPlugin
   smoothnormal: bool
+  def make_box(
+    self,
+    count: collections.abc.Sequence[typing.SupportsInt | typing.SupportsIndex],
+    spacing: collections.abc.Sequence[
+      typing.SupportsFloat | typing.SupportsIndex
+    ],
+    dim: typing.SupportsInt | typing.SupportsIndex = 3,
+  ) -> None: ...
   def make_cone(
     self,
     nedge: typing.SupportsInt | typing.SupportsIndex,
     radius: typing.SupportsFloat | typing.SupportsIndex,
+  ) -> None: ...
+  def make_cylinder(
+    self,
+    count: collections.abc.Sequence[typing.SupportsInt | typing.SupportsIndex],
+    spacing: collections.abc.Sequence[
+      typing.SupportsFloat | typing.SupportsIndex
+    ],
+    dim: typing.SupportsInt | typing.SupportsIndex = 3,
+  ) -> None: ...
+  def make_disc(
+    self,
+    count: collections.abc.Sequence[typing.SupportsInt | typing.SupportsIndex],
+    spacing: collections.abc.Sequence[
+      typing.SupportsFloat | typing.SupportsIndex
+    ],
+  ) -> None: ...
+  def make_ellipsoid(
+    self,
+    count: collections.abc.Sequence[typing.SupportsInt | typing.SupportsIndex],
+    spacing: collections.abc.Sequence[
+      typing.SupportsFloat | typing.SupportsIndex
+    ],
+    dim: typing.SupportsInt | typing.SupportsIndex = 3,
+  ) -> None: ...
+  def make_grid(
+    self,
+    count: collections.abc.Sequence[typing.SupportsInt | typing.SupportsIndex],
+    spacing: collections.abc.Sequence[
+      typing.SupportsFloat | typing.SupportsIndex
+    ],
+    dim: typing.SupportsInt | typing.SupportsIndex = 3,
   ) -> None: ...
   def make_hemisphere(
     self, resolution: typing.SupportsInt | typing.SupportsIndex
@@ -3164,6 +3272,13 @@ class MjsMesh:
   ) -> None: ...
   def make_sphere(
     self, subdivision: typing.SupportsInt | typing.SupportsIndex
+  ) -> None: ...
+  def make_square(
+    self,
+    count: collections.abc.Sequence[typing.SupportsInt | typing.SupportsIndex],
+    spacing: collections.abc.Sequence[
+      typing.SupportsFloat | typing.SupportsIndex
+    ],
   ) -> None: ...
   def make_supersphere(
     self,
@@ -3251,9 +3366,17 @@ class MjsMesh:
   @userfacetexcoord.setter
   def userfacetexcoord(self, arg1: numpy.typing.ArrayLike) -> None: ...
   @property
+  def usernode(self) -> MjDoubleVec: ...
+  @usernode.setter
+  def usernode(self, arg1: numpy.typing.ArrayLike) -> None: ...
+  @property
   def usernormal(self) -> MjFloatVec: ...
   @usernormal.setter
   def usernormal(self, arg1: numpy.typing.ArrayLike) -> None: ...
+  @property
+  def usertet(self) -> MjIntVec: ...
+  @usertet.setter
+  def usertet(self, arg1: numpy.typing.ArrayLike) -> None: ...
   @property
   def usertexcoord(self) -> MjFloatVec: ...
   @usertexcoord.setter
@@ -3355,6 +3478,7 @@ class MjsSkin:
   ) -> None: ...
 
 class MjsTexture:
+  classname: MjsDefault
   content_type: str
   data: bytes
   file: str
@@ -3385,6 +3509,10 @@ class MjsTexture:
     | numpy.typing.NDArray[numpy.str_]
     | numpy.typing.NDArray[numpy.bytes_],
   ) -> None: ...
+  @property
+  def embed(self) -> mujoco._enums.mjtEmbed: ...
+  @embed.setter
+  def embed(self, arg1: typing.SupportsInt | typing.SupportsIndex) -> None: ...
   @property
   def gridlayout(self) -> MjCharVec: ...
   @gridlayout.setter
@@ -3763,6 +3891,20 @@ class MjsFlex:
   ]: ...
   @rgba.setter
   def rgba(self, arg1: numpy.typing.ArrayLike) -> None: ...
+  @property
+  def section(self) -> mujoco._enums.mjtFlexSection: ...
+  @section.setter
+  def section(
+    self, arg1: typing.SupportsInt | typing.SupportsIndex
+  ) -> None: ...
+  @property
+  def sectionsize(
+    self,
+  ) -> typing.Annotated[
+    numpy.typing.NDArray[numpy.float64], '[2, 1]', 'flags.writeable'
+  ]: ...
+  @sectionsize.setter
+  def sectionsize(self, arg1: numpy.typing.ArrayLike) -> None: ...
   @property
   def selfcollide(self) -> mujoco._enums.mjtFlexSelf: ...
   @selfcollide.setter
@@ -4599,6 +4741,10 @@ class MjsActuator:
     self, arg1: typing.SupportsInt | typing.SupportsIndex
   ) -> None: ...
   @property
+  def type(self) -> mujoco._enums.mjtActuator: ...
+  @type.setter
+  def type(self, arg1: typing.SupportsInt | typing.SupportsIndex) -> None: ...
+  @property
   def userdata(self) -> MjDoubleVec: ...
   @userdata.setter
   def userdata(self, arg1: numpy.typing.ArrayLike) -> None: ...
@@ -5161,6 +5307,8 @@ class MjsCompiler:
   fitaabb: bool
   fusestatic: bool
   meshdir: str
+  savecanonical: bool
+  savecompiled: bool
   saveinertial: bool
   texturedir: str
   usethread: bool
@@ -5211,6 +5359,12 @@ class MjsCompiler:
   ]: ...
   @inertiagrouprange.setter
   def inertiagrouprange(self, arg1: numpy.typing.ArrayLike) -> None: ...
+  @property
+  def passthrough(self) -> mujoco._enums.mjtPassthrough: ...
+  @passthrough.setter
+  def passthrough(
+    self, arg1: typing.SupportsInt | typing.SupportsIndex
+  ) -> None: ...
   @property
   def settotalmass(self) -> float: ...
   @settotalmass.setter

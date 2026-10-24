@@ -12,15 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-# Modified for typed-mujoco 3.15.0 compatibility.
+# Modified for typed-mujoco 3.17.0 compatibility.
 """Class for coordinating the rendering of scenes to render targets."""
 
 from typing import Any, Protocol, TypeAlias
 
 from typing_extensions import Buffer, CapsuleType
 
-from mujoco import MjvGLCamera
-from mujoco import _render_filament as mjrf
+from mujoco import MjvGLCamera, mjrf
 
 class SupportsDLPack(Protocol):
   """Protocol for objects supporting the DLPack tensor exchange protocol."""
@@ -30,6 +29,33 @@ class SupportsDLPack(Protocol):
   def __dlpack_device__(self, /) -> tuple[int, int]: ...
 
 BufferType: TypeAlias = Buffer | SupportsDLPack
+
+class View:
+  def __init__(
+    self,
+    scene: str,
+    target: str,
+    viewport: tuple[float, float, float, float] = (0.0, 0.0, 1.0, 1.0),
+    camera: mjrf.Camera | MjvGLCamera | None = None,
+    draw_mode: mjrf.DrawMode = ...,
+    post_processing: bool = True,
+    reflections: bool = True,
+    shadows: bool = True,
+    headlight: bool = False,
+    headlight_color: tuple[float, float, float] = (1.0, 1.0, 1.0),
+    headlight_intensity: float = 0.0,
+  ) -> None: ...
+  scene: str
+  target: str
+  viewport: tuple[float, float, float, float]
+  camera: mjrf.Camera | MjvGLCamera | None
+  draw_mode: mjrf.DrawMode
+  post_processing: bool
+  reflections: bool
+  shadows: bool
+  headlight: bool
+  headlight_color: tuple[float, float, float]
+  headlight_intensity: float
 
 class Renderer:
   """Coordinates the rendering of scenes to render targets.
@@ -49,11 +75,12 @@ class Renderer:
 
   The Renderer is not limited to rendering a single scene to a single target.
   You can configure the Renderer to manage multiple scenes from multiple
-  cameras into multiple targets. Each such render operation is specified using
-  the view() method.
+  cameras into multiple targets. Each render operation is specified by a View.
   """
 
   def __init__(self, ctx: mjrf.Context) -> None: ...
+  @property
+  def context(self) -> mjrf.Context: ...
   def scene(self, name: str) -> mjrf.Scene:
     """Returns the scene with the given name, creating it if needed."""
   def target(
@@ -63,18 +90,5 @@ class Renderer:
     pixel_format: mjrf.PixelFormat = ...,
   ) -> mjrf.RenderTarget:
     """Defines a render target with the given name and destination buffer."""
-  def view(
-    self,
-    name: str,
-    *,
-    scene: str,
-    target: str,
-    camera: mjrf.Camera | MjvGLCamera = ...,
-    viewport: tuple[float, float, float, float] | None = None,
-    draw_mode: mjrf.DrawMode = ...,
-  ) -> None:
-    """Associates a scene, camera, viewport, and target as a rendering operation."""
-  def update_camera(self, name: str, camera: mjrf.Camera | MjvGLCamera) -> None:
-    """Updates the camera for the given view."""
-  def render(self) -> None:
-    """Renders all active views."""
+  def render(self, views: list[View]) -> None:
+    """Render the views to their named targets."""

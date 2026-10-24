@@ -11,16 +11,17 @@ import numpy as np
 from typing_extensions import Never, assert_type
 
 import mujoco
+from mujoco import mjrf
 from mujoco.experimental.dear_imgui import dear_imgui as imgui
 from mujoco.experimental.implot import implot
 from mujoco.experimental.studio import (
   native_viewer_cc,
-  renderer,
   sim,
   ux,
   window,
 )
 from mujoco.experimental.studio.web import headless_ui, state_payload
+from mujoco.rendering.filament import renderer
 
 
 def studio_native(model: mujoco.MjModel, data: mujoco.MjData) -> None:
@@ -67,32 +68,50 @@ def studio_native(model: mujoco.MjModel, data: mujoco.MjData) -> None:
   history.init(3, max_history=16)
   assert_type(history.size(), int)
   ux.reset_history(history, state, model, data)
-
-  studio = native_viewer_cc.Viewer('Studio', 320, 240, 'opengl')
-  studio.InitRenderer(model)
-  studio.Present(model, data, perturb, camera, vis_options, flags.flags, [geom])
-  studio.Present(
+  assert_type(ux.get_console_lines(), list[str])
+  assert_type(ux.get_console_counts().errors, int)
+  assert_type(ux.console_status_gui(False), bool)
+  assert_type(ux.add_console_message(1, 'message'), None)
+  ux.simulation_gui(
     model,
     data,
-    perturb,
-    camera,
-    vis_options,
-    np.zeros(11, dtype=np.uint8),
-    (geom,),
+    control,
+    state,
+    lambda: None,
+    lambda: None,
+    lambda: None,
+    lambda: None,
   )
-  assert_type(studio.RenderToTexture(model, data, camera, 64, 64, 0), int)
-  assert_type(studio.UploadImage(0, b'\x00' * 3, 1, 1, 3), int)
-  assert_type(studio.NewFrame(), bool)
-  assert_type(studio.GetImPlotContext(), int)
+  assert_type(ux.info_gui(model, data, True, 60.0, gpu_ms=1.0), None)
 
-  render = renderer.Renderer('opengl_headless')
-  render.Init(model)
-  assert_type(render.Render(model, data, None, None, None, 32, 32), bytes)
-  assert_type(render.get_render_flags(), memoryview)
+  ctx = mjrf.Context(mjrf.ContextConfig())
+  render = renderer.Renderer(ctx)
+  scene = render.scene('scn')
+  native_scene = native_viewer_cc.ModelScene(ctx, scene, model)
+  assert_type(
+    native_scene.sync(
+      320, 240, model, data, perturb, camera, vis_options, [geom]
+    ),
+    None,
+  )
+  assert_type(native_scene.get_headlight_intensity(), float)
+  bridge = native_viewer_cc.ImguiBridge(ctx, render.scene('ux'))
+  assert_type(bridge.update(), None)
+  assert_type(bridge.upload_image(0, '\x00' * 3, 1, 1, 3), int)
+  assert_type(bridge.upload_image(0, b'\x00' * 3, 1, 1, 3), int)
+  pixels = np.zeros((240, 320, 3), dtype=np.uint8)
+  assert_type(render.target('out', pixels), mjrf.RenderTarget)
+  assert_type(render.render([renderer.View('scn', 'out')]), None)
   win = window.Window('Studio', 320, 240, 'opengl_headless')
-  win.Present(np.zeros((240, 320, 3), dtype=np.uint8))
+  win.Present(pixels)
   win.Present(memoryview(bytearray(3)))
+  win.Present(None)
   assert_type(win.GetWidth(), int)
+  assert_type(win.GetScale(), float)
+  assert_type(win.GetGraphicsMode(), int)
+  assert_type(native_viewer_cc.render_to_pixels(win.GetGraphicsMode()), bool)
+  assert_type(window.GetImGuiContext(), int)
+  assert_type(window.GetImPlotContext(), int)
 
   web = headless_ui.HeadlessUi('Studio')
   assert_type(web.new_frame(), bool)
@@ -120,6 +139,18 @@ def studio_ui() -> None:
   point = imgui.Vec2(1.0, 2.0)
   assert_type(point.x, float)
   assert_type(imgui.GetIO().DisplaySize, imgui.Vec2)
+  atlas = imgui.GetIO().Fonts
+  assert_type(atlas, imgui.FontAtlas)
+  assert_type(len(atlas), int)
+  font = atlas[0]
+  assert_type(font, imgui.Font)
+  assert_type(imgui.PushFont(font, 16.0), None)
+  style = imgui.GetStyle()
+  style.FontScaleMain = 1.0
+  assert_type(style.FontScaleMain, float)
+  assert_type(imgui.StyleColorsDark(style), None)
+  assert_type(imgui.StyleColorsLight(), None)
+  assert_type(imgui.StyleColorsClassic(), None)
   assert_type(imgui.Begin('Options', True), tuple[bool, bool])
   assert_type(imgui.Key.F6.value, int)
   assert_type(imgui.Key(imgui.Key.F6.value).name, str)

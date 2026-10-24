@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "typed-mujoco"
-version = "3.15.0.0"
-description = "Partial type stubs for the official MuJoCo 3.15.0 Python package"
+version = "3.17.0.0"
+description = "Partial type stubs for the official MuJoCo 3.17.0 Python package"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
 classifiers = ["Typing :: Stubs Only", "Programming Language :: Python :: 3"]
-dependencies = ["mujoco>=3.15.0", "typing-extensions>=4.12"]
+dependencies = ["mujoco>=3.17.0", "typing-extensions>=4.12"]
 
 [project.urls]
 Repository = "https://github.com/Artur-Galstyan/mujoco"

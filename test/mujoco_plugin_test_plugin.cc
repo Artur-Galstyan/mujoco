@@ -12,17 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef MUJOCO_SRC_EXPERIMENTAL_STUDIO_HAL_EGL_UTILS_H_
-#define MUJOCO_SRC_EXPERIMENTAL_STUDIO_HAL_EGL_UTILS_H_
+// A minimal plugin, built with the mujoco_plugin macro for mujoco_plugin_test.
 
-#include <memory>
+#include <mujoco/mujoco.h>
 
-namespace mujoco::studio {
+namespace mujoco {
+namespace {
 
-// Creates an opaque handle to an initialized EGL context and display.
-// Resetting this handle will destroy the context and release the display.
-std::shared_ptr<void> CreateEglContext();
+mjPLUGIN_LIB_INIT(mujoco_plugin_test) {
+  mjpPlugin plugin;
+  mjp_defaultPlugin(&plugin);
+  plugin.name = "mujoco.test.mujoco_plugin";
+  mjp_registerPlugin(&plugin);
+}
 
-}  // namespace mujoco::studio
-
-#endif  // MUJOCO_SRC_EXPERIMENTAL_STUDIO_HAL_EGL_UTILS_H_
+}  // namespace
+}  // namespace mujoco

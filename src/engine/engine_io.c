@@ -53,6 +53,9 @@
 
 static const int MAX_ARRAY_SIZE = INT_MAX;
 
+// tree_asleep value for fully awake tree
+static const int kAwake = -(1+mjMINAWAKE);
+
 
 //----------------------------------- static utility functions -------------------------------------
 
@@ -142,7 +145,7 @@ static inline unsigned int SKIP(intptr_t offset) {
 //----------------------------------- mjModel construction -----------------------------------------
 
 // set pointers in mjModel buffer
-static void mj_setPtrModel(mjModel* m) {
+void mj_setPtrModel(mjModel* m) {
   char* ptr = (char*)m->buffer;
 
   // prepare symbols needed by xmacro
@@ -1030,18 +1033,37 @@ static void mj_setPtrData(const mjModel* m, mjData* d) {
 }
 
 
-// initialize plugins, copy into d (required for deletion)
-void mj_initPlugin(const mjModel* m, mjData* d) {
+// initialize plugins, copy into d (required for deletion); if an init callback fails, destroy
+// the instances already initialized and return the id of the failed instance, otherwise -1
+int mj_initPlugin(const mjModel* m, mjData* d) {
   d->nplugin = m->nplugin;
   for (int i = 0; i < m->nplugin; ++i) {
     d->plugin[i] = m->plugin[i];
     const mjpPlugin* plugin = mjp_getPluginAtSlot(m->plugin[i]);
     if (plugin->init && plugin->init(m, d, i) < 0) {
-      mju_free(d->buffer);
-      mju_free(d->arena);
-      mju_free(d);
-      mjERROR("plugin->init failed for plugin id %d", i);
+      // destroy previously initialized instances
+      for (int j=0; j < i; j++) {
+        const mjpPlugin* prev = mjp_getPluginAtSlot(d->plugin[j]);
+        if (prev->destroy) {
+          prev->destroy(d, j);
+        }
+      }
+      d->nplugin = 0;
+      return i;
     }
+  }
+  return -1;
+}
+
+
+// initialize plugins of mjData allocated by the caller, free it and error on failure
+static void initPluginOrFree(const mjModel* m, mjData* d) {
+  int failed = mj_initPlugin(m, d);
+  if (failed >= 0) {
+    mju_free(d->buffer);
+    mju_free(d->arena);
+    mju_free(d);
+    mjERROR("plugin->init failed for plugin id %d", failed);
   }
 }
 
@@ -1127,10 +1149,9 @@ void mj_makeRawData(mjData** dest, const mjModel* m) {
   // clear nplugin (overwritten by _initPlugin)
   d->nplugin = 0;
 
-  // set awake array sizes to default (all awake)
-  d->ntree_awake = m->ntree;
-  d->nbody_awake = d->nparent_awake = m->nbody;
-  d->nv_awake = m->nv;
+  // set all trees awake, treat static bodies as awake: plugin init can call mj_kinematics
+  mju_fillInt(d->tree_asleep, kAwake, m->ntree);
+  mj_updateSleepInit(m, d, /*flg_staticawake*/ 1);
 
   // copy pointer if allocated here
   if (allocate) {
@@ -1144,7 +1165,7 @@ mjData* mj_makeData(const mjModel* m) {
   mjData* d = NULL;
   mj_makeRawData(&d, m);
   if (d) {
-    mj_initPlugin(m, d);
+    initPluginOrFree(m, d);
     mj_resetData(m, d);
   }
   return d;
@@ -1160,7 +1181,7 @@ mjData* mj_copyDataVisual(mjData* dest, const mjModel* m, const mjData* src, int
   // allocate new data if needed
   if (!dest) {
     mj_makeRawData(&dest, m);
-    mj_initPlugin(m, dest);
+    initPluginOrFree(m, dest);
   }
 
   // check sizes
@@ -1498,8 +1519,6 @@ static void _resetData(const mjModel* m, mjData* d, unsigned char debug_value) {
       }
     }
   }
-
-  static int kAwake = -(1+mjMINAWAKE);  // tree_asleep value for fully awake tree
 
   // set all trees to awake
   mju_fillInt(d->tree_asleep, kAwake, m->ntree);
@@ -1857,6 +1876,39 @@ static int numObjects(const mjModel* m, mjtObj objtype) {
 }
 
 
+// validate CSR sparse matrix structure; return 0 if valid, error code otherwise
+//   1: rownnz out of bounds
+//   2: rowadr out of bounds
+//   3: colind out of bounds or unsorted
+static int validateSparse(int nrows, int ncols, mjtSize nnz,
+                          const int* rownnz, const int* rowadr, const int* colind,
+                          int strict) {
+  for (int r=0; r < nrows; r++) {
+    int nnz_r = rownnz[r];
+    if (nnz_r < 0 || nnz_r > ncols) {
+      return 1;
+    }
+    int adr_r = rowadr[r];
+    if (adr_r < 0 || (mjtSize)adr_r + nnz_r > nnz) {
+      return 2;
+    }
+    for (int k=0; k < nnz_r; k++) {
+      int col = colind[adr_r+k];
+      if (col < 0 || col >= ncols) {
+        return 3;
+      }
+      if (k > 0) {
+        int prev = colind[adr_r+k-1];
+        if (strict ? (col <= prev) : (col < prev)) {
+          return 3;
+        }
+      }
+    }
+  }
+  return 0;
+}
+
+
 // validate reference fields in a model; return null if valid, error message otherwise
 const char* mj_validateReferences(const mjModel* m) {
   // for each field in mjModel that refers to another field, call X with:
@@ -1907,6 +1959,8 @@ const char* mj_validateReferences(const mjModel* m) {
   X(flex_elemdataadr,   nflex,          nflexelemdata , 0                      ) \
   X(flex_elemedgeadr,   nflex,          nflexelemedge , 0                      ) \
   X(flex_shelldataadr,  nflex,          nflexshelldata, 0                      ) \
+  X(flex_vertedgeadr,   nflexvert,      nflexedge*2   , m->flex_vertedgenum    ) \
+  X(flex_vertedge,      nflexedge*2,    nflexedge     , 0                      ) \
   X(flex_edge,          nflexedge*2,    nflexvert     , 0                      ) \
   X(flex_elem,          nflexelemdata,  nflexvert     , 0                      ) \
   X(flex_elemedge,      nflexelemedge,  nflexedge     , 0                      ) \
@@ -1959,7 +2013,8 @@ const char* mj_validateReferences(const mjModel* m) {
   X(hfield_pathadr,     nhfield,        npaths        , 0                      ) \
   X(mesh_pathadr,       nmesh,          npaths        , 0                      ) \
   X(skin_pathadr,       nskin,          npaths        , 0                      ) \
-  X(tex_pathadr,        ntex,           npaths        , 0                      )
+  X(tex_pathadr,        ntex,           npaths        , 0                      ) \
+  X(tex_contenttypeadr, ntex,           npaths        , 0                      )
 
   #define X(adrarray, nadrs, ntarget, numarray) {             \
     int *nums = (numarray);                                   \
@@ -1986,16 +2041,67 @@ const char* mj_validateReferences(const mjModel* m) {
   #undef X
 #undef MJMODEL_REFERENCES
 
+  #define VALIDATE_SPARSE(prefix, nrows, ncols, nnz, strict)           \
+    switch (validateSparse(nrows, ncols, nnz,                          \
+                           m->prefix##_rownnz, m->prefix##_rowadr,     \
+                           m->prefix##_colind, strict)) {              \
+    case 1: return "Invalid model: " #prefix "_rownnz out of bounds."; \
+    case 2: return "Invalid model: " #prefix "_rowadr out of bounds."; \
+    case 3: return "Invalid model: " #prefix "_colind out of bounds."; \
+    }
+
+  VALIDATE_SPARSE(M,          m->nv,          m->nv,       m->nC,     1);
+  VALIDATE_SPARSE(D,          m->nv,          m->nv,       m->nD,     1);
+  VALIDATE_SPARSE(B,          m->nbody,       m->nv,       m->nB,     1);
+  VALIDATE_SPARSE(ten_J,      m->ntendon,     m->nv,       m->nJten,  0);
+  VALIDATE_SPARSE(flexedge_J, m->nflexedge,   m->nv,       m->nJfe,   1);
+  VALIDATE_SPARSE(flexvert_J, 2*m->nflexvert, m->nv,       2*m->nJfv, 1);
+  VALIDATE_SPARSE(efm0_L,     m->nefm0dof,    m->nefm0dof, m->nefm0L, 1);
+  #undef VALIDATE_SPARSE
+
   // special logic that doesn't fit in the macro:
   for (int i=0; i < m->nbody; i++) {
-    if (i > 0 && m->body_parentid[i] >= i) {
+    if ((i > 0 && m->body_parentid[i] >= i) || m->body_parentid[i] < 0) {
       return "Invalid model: bad body_parentid.";
     }
-    if (m->body_rootid[i] > i) {
+    if (m->body_rootid[i] > i || m->body_rootid[i] < 0) {
       return "Invalid model: bad body_rootid.";
     }
-    if (m->body_weldid[i] > i) {
+    if (m->body_weldid[i] > i || m->body_weldid[i] < 0) {
       return "Invalid model: bad body_weldid.";
+    }
+    if (i == 0) {
+      if (m->B_rownnz[0] != m->nv || (m->nv > 0 && m->B_rowadr[0] != 0)) {
+        return "Invalid model: B_rownnz out of bounds.";
+      }
+    } else {
+      int np = m->body_parentid[i];
+      int c = 0, cp = 0;
+      while (c < m->B_rownnz[i] && cp < m->B_rownnz[np]) {
+        int col = m->B_colind[m->B_rowadr[i]+c];
+        int colp = m->B_colind[m->B_rowadr[np]+cp];
+        if (col == colp) {
+          c++;
+          cp++;
+        } else if (col > colp) {
+          cp++;
+        } else {
+          break;
+        }
+      }
+      if (c < m->B_rownnz[i]) {
+        return "Invalid model: B_colind out of bounds.";
+      }
+
+      mjtSize ndof = 0;
+      int np_weld = m->body_weldid[np];
+      while (np_weld > 0) {
+        ndof += m->body_dofnum[np_weld];
+        np_weld = m->body_weldid[m->body_parentid[np_weld]];
+      }
+      if (ndof > m->B_rownnz[i] || ndof > m->B_rownnz[np]) {
+        return "Invalid model: B_rownnz out of bounds.";
+      }
     }
   }
   for (int i=0; i < m->njnt; i++) {
@@ -2011,9 +2117,84 @@ const char* mj_validateReferences(const mjModel* m) {
       return "Invalid model: jnt_dofadr out of bounds.";
     }
   }
+  mjtSize nM_post = 0;
   for (int i=0; i < m->nv; i++) {
     if (m->dof_parentid[i] >= i) {
       return "Invalid model: bad dof_parentid.";
+    }
+    int bodyid = m->dof_bodyid[i];
+    if (bodyid < 0 || bodyid >= m->nbody) {
+      return "Invalid model: dof_bodyid out of bounds.";
+    }
+    if (m->dof_Madr[i] != nM_post) {
+      return "Invalid model: dof_Madr out of bounds.";
+    }
+    int nanc = 0;
+    for (int j=i; j >= 0; j = m->dof_parentid[j]) {
+      nanc++;
+    }
+    nM_post += nanc;
+
+    int expected_nnz = m->dof_simplenum[i] ? 1 : nanc;
+    if (m->M_rownnz[i] != expected_nnz) {
+      return "Invalid model: M_rownnz out of bounds.";
+    }
+    int adr = m->M_rowadr[i];
+    int k = expected_nnz - 1;
+    for (int j=i; k >= 0; j = m->dof_parentid[j], k--) {
+      if (m->M_colind[adr+k] != j) {
+        return "Invalid model: M_colind out of bounds.";
+      }
+    }
+
+    if (m->D_diag[i] != nanc - 1 || m->D_diag[i] >= m->D_rownnz[i] ||
+        m->D_colind[m->D_rowadr[i]+m->D_diag[i]] != i) {
+      return "Invalid model: D_diag out of bounds.";
+    }
+
+    if (m->D_rownnz[i] != m->B_rownnz[bodyid]) {
+      return "Invalid model: D_rownnz out of bounds.";
+    }
+    for (int c=0; c < m->D_rownnz[i]; c++) {
+      if (m->D_colind[m->D_rowadr[i]+c] != m->B_colind[m->B_rowadr[bodyid]+c]) {
+        return "Invalid model: D_colind out of bounds.";
+      }
+    }
+  }
+  if (nM_post != m->nM) {
+    return "Invalid model: dof_Madr out of bounds.";
+  }
+  for (int i=0; i < m->nC; i++) {
+    if (m->mapM2M[i] < 0 || m->mapM2M[i] >= m->nM) {
+      return "Invalid model: mapM2M out of bounds.";
+    }
+    if (m->mapD2M[i] < 0 || m->mapD2M[i] >= m->nD) {
+      return "Invalid model: mapD2M out of bounds.";
+    }
+  }
+  for (int i=0; i < m->nD; i++) {
+    if (m->mapM2D[i] < -1 || m->mapM2D[i] >= m->nC) {
+      return "Invalid model: mapM2D out of bounds.";
+    }
+  }
+  for (int i=0; i < m->nefm0dof; i++) {
+    if (m->efm0_dofid[i] < 0 || m->efm0_dofid[i] >= m->nv) {
+      return "Invalid model: efm0_dofid out of bounds.";
+    }
+  }
+  for (int i=0; i < m->nefmCvert; i++) {
+    if (m->efmC_perm[i] < -1 || m->efmC_perm[i] >= m->nv) {
+      return "Invalid model: efmC_perm out of bounds.";
+    }
+  }
+  for (int f=0; f < m->nflex; f++) {
+    int ncell = m->flex_interp[f] ?
+                m->flex_cellnum[3*f+0] * m->flex_cellnum[3*f+1] * m->flex_cellnum[3*f+2] : 0;
+    for (int v=0; v < m->flex_vertnum[f]; v++) {
+      int c = m->flex_vertcell[m->flex_vertadr[f] + v];
+      if (m->flex_interp[f] ? (c < 0 || c >= ncell) : (c != -1)) {
+        return "Invalid model: flex_vertcell out of bounds.";
+      }
     }
   }
   for (int i=0; i < m->ngeom; i++) {
@@ -2044,6 +2225,13 @@ const char* mj_validateReferences(const mjModel* m) {
     }
   }
   for (int i=0; i < m->ntex; i++) {
+    // by-reference texture: no payload, the file is at tex_pathadr
+    if (m->tex_adr[i] == -1) {
+      if (m->tex_pathadr[i] < 0) {
+        return "Invalid model: by-reference texture has no path.";
+      }
+      continue;
+    }
     mjtSize nbytes = ((mjtSize) m->tex_nchannel[i]) * m->tex_height[i] * m->tex_width[i];
     if (m->tex_adr[i] + nbytes > m->ntexdata || m->tex_adr[i] < 0) {
       return "Invalid model: tex_adr out of bounds.";

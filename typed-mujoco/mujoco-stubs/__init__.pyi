@@ -74,6 +74,9 @@ from mujoco._constants import mjNSENS as mjNSENS
 from mujoco._constants import mjNSOLVER as mjNSOLVER
 from mujoco._constants import mjPI as mjPI
 from mujoco._constants import mjRNDSTRING as mjRNDSTRING
+from mujoco._constants import mjSC_IN as mjSC_IN
+from mujoco._constants import mjSC_INOUT as mjSC_INOUT
+from mujoco._constants import mjSC_OUT as mjSC_OUT
 from mujoco._constants import mjTIMERSTRING as mjTIMERSTRING
 from mujoco._constants import mjVERSION_HEADER as mjVERSION_HEADER
 from mujoco._constants import mjVISSTRING as mjVISSTRING
@@ -82,6 +85,7 @@ from mujoco._enums import mjrMeshPrimitiveType as mjrMeshPrimitiveType
 from mujoco._enums import mjrPixelFormat as mjrPixelFormat
 from mujoco._enums import mjrVertexAttributeType as mjrVertexAttributeType
 from mujoco._enums import mjrVertexAttributeUsage as mjrVertexAttributeUsage
+from mujoco._enums import mjtActuator as mjtActuator
 from mujoco._enums import mjtAlignFree as mjtAlignFree
 from mujoco._enums import mjtBias as mjtBias
 from mujoco._enums import mjtBuiltin as mjtBuiltin
@@ -103,9 +107,11 @@ from mujoco._enums import mjtDataType as mjtDataType
 from mujoco._enums import mjtDepthMap as mjtDepthMap
 from mujoco._enums import mjtDisableBit as mjtDisableBit
 from mujoco._enums import mjtDyn as mjtDyn
+from mujoco._enums import mjtEmbed as mjtEmbed
 from mujoco._enums import mjtEnableBit as mjtEnableBit
 from mujoco._enums import mjtEq as mjtEq
 from mujoco._enums import mjtEvent as mjtEvent
+from mujoco._enums import mjtFlexSection as mjtFlexSection
 from mujoco._enums import mjtFlexSelf as mjtFlexSelf
 from mujoco._enums import mjtFont as mjtFont
 from mujoco._enums import mjtFontScale as mjtFontScale
@@ -132,12 +138,14 @@ from mujoco._enums import mjtMeshInertia as mjtMeshInertia
 from mujoco._enums import mjtMouse as mjtMouse
 from mujoco._enums import mjtObj as mjtObj
 from mujoco._enums import mjtOrientation as mjtOrientation
+from mujoco._enums import mjtPassthrough as mjtPassthrough
 from mujoco._enums import mjtPertBit as mjtPertBit
 from mujoco._enums import mjtPluginCapabilityBit as mjtPluginCapabilityBit
 from mujoco._enums import mjtProjection as mjtProjection
 from mujoco._enums import mjtRayDataField as mjtRayDataField
 from mujoco._enums import mjtRndFlag as mjtRndFlag
 from mujoco._enums import mjtSameFrame as mjtSameFrame
+from mujoco._enums import mjtScaling as mjtScaling
 from mujoco._enums import mjtSDFType as mjtSDFType
 from mujoco._enums import mjtSection as mjtSection
 from mujoco._enums import mjtSensor as mjtSensor
@@ -180,6 +188,7 @@ from mujoco._functions import mj_defaultOption as mj_defaultOption
 from mujoco._functions import mj_defaultSolRefImp as mj_defaultSolRefImp
 from mujoco._functions import mj_defaultVisual as mj_defaultVisual
 from mujoco._functions import mj_differentiatePos as mj_differentiatePos
+from mujoco._functions import mj_embedAssets as mj_embedAssets
 from mujoco._functions import mj_energyPos as mj_energyPos
 from mujoco._functions import mj_energyVel as mj_energyVel
 from mujoco._functions import mj_Euler as mj_Euler
@@ -229,6 +238,7 @@ from mujoco._functions import (
   mj_loadAllPluginLibraries as mj_loadAllPluginLibraries,
 )
 from mujoco._functions import mj_loadPluginLibrary as mj_loadPluginLibrary
+from mujoco._functions import mj_loadTexture as mj_loadTexture
 from mujoco._functions import mj_local2Global as mj_local2Global
 from mujoco._functions import mj_makeConstraint as mj_makeConstraint
 from mujoco._functions import mj_makeM as mj_makeM
@@ -678,9 +688,13 @@ class _MjBindModel:
   @property
   def castshadow(self) -> list[np.uint8]: ...
   @property
+  def colorspace(self) -> list[np.int32]: ...
+  @property
   def conaffinity(self) -> list[np.int32]: ...
   @property
   def condim(self) -> list[np.int32]: ...
+  @property
+  def contenttypeadr(self) -> list[np.int32]: ...
   @property
   def contype(self) -> list[np.int32]: ...
   @property
@@ -827,6 +841,8 @@ class _MjBindModel:
   def objtype(self) -> list[np.int32]: ...
   @property
   def parentid(self) -> list[np.int32]: ...
+  @property
+  def pathadr(self) -> list[np.int32]: ...
   @property
   def pos(self) -> list[np.float32 | np.float64]: ...
   @property
@@ -980,8 +996,6 @@ class _MjBindData:
   def length(self, value: Iterable[npt.ArrayLike]) -> None: ...
   @property
   def moment(self) -> list[np.float32 | np.float64]: ...
-  @moment.setter
-  def moment(self, value: Iterable[npt.ArrayLike]) -> None: ...
   @property
   def qLDiagInv(self) -> list[np.float32 | np.float64]: ...
   @qLDiagInv.setter

@@ -47,6 +47,9 @@ __all__: list[str] = [
   'mjNSOLVER',
   'mjPI',
   'mjRNDSTRING',
+  'mjSC_IN',
+  'mjSC_INOUT',
+  'mjSC_OUT',
   'mjTIMERSTRING',
   'mjVERSION_HEADER',
   'mjVISSTRING',
@@ -89,7 +92,7 @@ mjMINMU: float = 1e-05
 mjMINVAL: float = 1e-15
 mjNBIAS: int = 10
 mjNDYN: int = 10
-mjNEQDATA: int = 11
+mjNEQDATA: int = 12
 mjNFLUID: int = 12
 mjNGAIN: int = 10
 mjNGROUP: int = 6
@@ -101,6 +104,9 @@ mjNSENS: int = 3
 mjNSOLVER: int = 200
 mjPI: float = ...
 mjRNDSTRING: tuple = ...
+mjSC_IN: int = 1
+mjSC_INOUT: int = 3
+mjSC_OUT: int = 2
 mjTIMERSTRING: tuple = ...
-mjVERSION_HEADER: int = 3015001
+mjVERSION_HEADER: int = 3017000
 mjVISSTRING: tuple = ...

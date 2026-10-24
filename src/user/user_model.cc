@@ -20,6 +20,7 @@
 #include <chrono>
 #include <cmath>
 #include <csetjmp>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -1395,8 +1396,8 @@ mjCHField* mjCModel::AddHField() {
 
 
 // add texture
-mjCTexture* mjCModel::AddTexture() {
-  return AddObject(textures_, "texture");
+mjCTexture* mjCModel::AddTexture(mjCDef* def) {
+  return AddObjectDefault(textures_, "texture", def);
 }
 
 
@@ -1988,7 +1989,8 @@ void mjCModel::IndexAssets() {
   for (int i = 0; i < materials_.size(); i++) {
     mjCMaterial* material = materials_[i];
 
-    // find textures by name
+    // find textures by name, as the spec has them now
+    material->CopyFromSpec();
     for (int j = 0; j < mjNTEXROLE; j++) {
       material->texid[j] = -1;
       if (!material->textures_[j].empty()) {
@@ -2161,11 +2163,12 @@ void mjCModel::CheckEmptyNames(void) {
 }
 
 
+// total length of the resolved paths of the assets in a list which have a file
 template <typename T>
 static size_t getpathslength(std::vector<T> list) {
   size_t result = 0;
   for (const auto& element : list) {
-    if (!element->File().empty()) { result += element->File().length() + 1; }
+    if (!element->File().empty()) { result += element->ResolvedFilePath().length() + 1; }
   }
 
   return result;
@@ -2385,15 +2388,18 @@ void mjCModel::SetSizes() {
     nefm0L   = nnz;
   }
 
-  // sparse metric factor ordering slots, filled by mj_setConst (mj_effCholSetConst): only models
-  // that enable IPC use the factor, on 2D flexes; the covered vertices are disjoint dof triples
+  // sparse metric factor ordering slots, filled by mj_setConst
+  // (mj_effCholSetConst): 1D rods and, when IPC is enabled, 2D flexes use the
+  // factor; the covered vertices are disjoint dof triples
   nefmCvert = 0;
-  if (option.enableflags & mjENBL_IPC) {
-    for (int i = 0; i < nflex; i++) {
-      if (flexes_[i]->dim == 2) { nefmCvert += flexes_[i]->nvert; }
+  for (int i = 0; i < nflex; i++) {
+    if (flexes_[i]->interpolated || flexes_[i]->rigid) { continue; }
+    if ((flexes_[i]->dim == 1 && !flexes_[i]->bending.empty()) ||
+        ((option.enableflags & mjENBL_IPC) && flexes_[i]->dim == 2)) {
+      nefmCvert += flexes_[i]->nvert;
     }
-    nefmCvert = mjMIN(nefmCvert, nv / 3);
   }
+  nefmCvert = mjMIN(nefmCvert, nv / 3);
 
   // mesh counts
   for (int i = 0; i < nmesh; i++) {
@@ -2497,6 +2503,10 @@ void mjCModel::SetSizes() {
   npaths += getpathslength(meshes);
   npaths += getpathslength(skins_);
   npaths += getpathslength(textures_);
+  for (const auto& texture : textures_) {
+    std::string type = texture->get_content_type();
+    if (!type.empty()) { npaths += type.length() + 1; }
+  }
   if (npaths == 0) { npaths = 1; }
 
   // nemax
@@ -2800,18 +2810,21 @@ void mjCModel::CopyNames(mjModel* m) {
   }
 }
 
-// process paths from one list: concatenate, compute addresses
+// process paths from one list: concatenate resolved paths, compute addresses
 template <class T>
 static int pathlist(vector<T*>& list, int adr, int* path_adr, char* paths) {
   for (unsigned int i = 0; i < list.size(); ++i) {
     path_adr[i] = -1;
     if (!list[i] || list[i]->File().empty()) { continue; }
-    adr = addtolist(list[i]->File(), adr, &path_adr[i], paths);
+    adr = addtolist(list[i]->ResolvedFilePath(), adr, &path_adr[i], paths);
   }
 
   return adr;
 }
 
+// copy the resolved path of every asset with a file: the path LoadResource opened, against the
+// modelfiledir and meshdir/texturedir of the spec that owns the asset, not the file as authored;
+// texture content types follow the paths, -1 if not authored
 void mjCModel::CopyPaths(mjModel* m) {
   std::vector<mjCMesh*>   meshes  = CompiledMeshes();
   std::vector<mjCHField*> hfields = CompiledHFields();
@@ -2823,6 +2836,12 @@ void mjCModel::CopyPaths(mjModel* m) {
   adr = pathlist(meshes, adr, m->mesh_pathadr, m->paths);
   adr = pathlist(skins_, adr, m->skin_pathadr, m->paths);
   adr = pathlist(textures_, adr, m->tex_pathadr, m->paths);
+
+  for (unsigned int i = 0; i < textures_.size(); ++i) {
+    m->tex_contenttypeadr[i] = -1;
+    std::string type         = textures_[i]->get_content_type();
+    if (!type.empty()) { adr = addtolist(type, adr, &m->tex_contenttypeadr[i], m->paths); }
+  }
 }
 
 
@@ -3710,8 +3729,9 @@ void mjCModel::CopyObjects(mjModel* m) {
       mjuu_copyvec(m->flex_node + 3 * node_adr, pfl->node_.data(), 3 * pfl->nnode);
     }
 
-    // copy vert0
+    // copy vert0 and vertcell
     mjuu_copyvec(m->flex_vert0 + 3 * vert_adr, pfl->vert0_.data(), 3 * pfl->nvert);
+    memcpy(m->flex_vertcell + vert_adr, pfl->vertcell_.data(), pfl->nvert * sizeof(int));
 
     // copy node0
     mjuu_copyvec(m->flex_node0 + 3 * node_adr, pfl->node0_.data(), 3 * pfl->nnode);
@@ -3894,9 +3914,18 @@ void mjCModel::CopyObjects(mjModel* m) {
     m->tex_nchannel[i]   = ptex->nchannel;
     m->tex_adr[i]        = data_adr;
 
+    // by reference: no payload, the resolved path is in paths at tex_pathadr
+    if (ptex->ByReference()) {
+      m->tex_adr[i] = -1;
+      continue;
+    }
+
     // copy rgb data
     mjtSize nbytes = static_cast<mjtSize>(ptex->nchannel) * ptex->width * ptex->height;
     memcpy(m->tex_data + data_adr, ptex->data_.data(), nbytes);
+
+    // the model has the pixels now; the next compile loads them again
+    std::vector<std::byte>().swap(ptex->data_);
 
     // advance counter
     data_adr += nbytes;
@@ -4415,7 +4444,9 @@ void mjCModel::MakeData(const mjModel* m, mjData** dest) {
   mj_makeRawData(dest, m);
   mjData* d = *dest;
   if (d) {
-    mj_initPlugin(m, d);
+    // d belongs to the caller: report a failed plugin init as a compile error
+    int failed = mj_initPlugin(m, d);
+    if (failed >= 0) { throw mjCError(0, "plugin init failed for plugin id %d", nullptr, failed); }
     mj_resetData(m, d);
   }
 }
@@ -5344,6 +5375,168 @@ int mjCModel::DiscardVisual(const mjVFS* vfs) {
 }
 
 
+//------------------------------- MERGE ASSETS -----------------------------------------------------
+
+// map the assets of a list which repeat an earlier one, with the same key and the same content,
+// to that first one
+template <class T, class Mergeable, class Key, class Content>
+static std::unordered_map<T*, T*> duplicates(const std::vector<T*>& list,
+                                             Mergeable              mergeable,
+                                             Key                    key,
+                                             Content                content) {
+  std::unordered_map<T*, T*>                       merged;
+  std::unordered_map<std::string, std::vector<T*>> groups;
+  for (T* asset : list) {
+    if (!mergeable(asset)) { continue; }
+    std::vector<T*>& group = groups[key(asset)];
+    auto             same  = [&](const T* other) { return content(asset, other); };
+    auto             first = std::find_if(group.begin(), group.end(), same);
+    if (first == group.end()) {
+      group.push_back(asset);
+    } else {
+      merged[asset] = *first;
+    }
+  }
+  return merged;
+}
+
+
+// merge the textures and the meshes which would compile to the same asset: the first of each group
+// keeps its name, every reference to the others is rewritten to it, and the others are deleted as
+// mjs_delete would. Nothing is read: an asset is identified by what compilation reads from the
+// spec, its resolved file or its buffers and all its parameters, names excluded. Return the number
+// of assets merged
+int mjCModel::DedupAssets() {
+  // set ids and the maps from names to ids; the names of the assets must be unique, since the
+  // references to them are rewritten by name
+  ProcessLists(/*checkrepeat=*/false);
+  CheckRepeat(mjOBJ_TEXTURE);
+  CheckRepeat(mjOBJ_MESH);
+
+  // what identifies an asset: its key, and the buffers which are compared without being copied
+  auto texturekey     = [](const mjCTexture* tex) { return tex->AssetKey(); };
+  auto texturecontent = [](const mjCTexture* a, const mjCTexture* b) {
+    return a->spec_data_ == b->spec_data_;
+  };
+  auto meshkey     = [](const mjCMesh* mesh) { return mesh->AssetKey(); };
+  auto meshcontent = [](const mjCMesh* a, const mjCMesh* b) {
+    return a->spec_vert_ == b->spec_vert_ &&
+           a->spec_normal_ == b->spec_normal_ &&
+           a->spec_texcoord_ == b->spec_texcoord_ &&
+           a->spec_face_ == b->spec_face_ &&
+           a->spec_facenormal_ == b->spec_facenormal_ &&
+           a->spec_facetexcoord_ == b->spec_facetexcoord_ &&
+           a->spec_node_ == b->spec_node_ &&
+           a->spec_tet_ == b->spec_tet_;
+  };
+  // an unnamed asset cannot be referenced, it is left as it is; a mesh with a plugin is the
+  // instance of the plugin, it is not merged
+  auto named    = [](const mjCTexture* tex) { return !tex->name.empty(); };
+  auto noplugin = [](const mjCMesh* mesh) {
+    return !mesh->name.empty() && !mesh->spec.plugin.active;
+  };
+  auto textures = duplicates(textures_, named, texturekey, texturecontent);
+  auto meshes   = duplicates(meshes_, noplugin, meshkey, meshcontent);
+  int  nmerged  = textures.size() + meshes.size();
+  if (!nmerged) { return 0; }
+
+  // the names which replace those of the merged assets
+  std::unordered_map<std::string, std::string> texnames, meshnames;
+  for (const auto& [tex, first] : textures) { texnames[tex->name] = first->name; }
+  for (const auto& [mesh, first] : meshes) { meshnames[mesh->name] = first->name; }
+  auto rename = [](const std::unordered_map<std::string, std::string>& names, std::string& name) {
+    auto it = names.find(name);
+    if (it != names.end()) { name = it->second; }
+  };
+  auto texture = [&](std::string& name) { rename(texnames, name); };
+  auto mesh    = [&](std::string& name) { rename(meshnames, name); };
+  auto object  = [&](mjtObj type, std::string& name) {
+    if (type == mjOBJ_TEXTURE) { texture(name); }
+    if (type == mjOBJ_MESH) { mesh(name); }
+  };
+
+  // the merged assets and the instances of the meshes, which the compiled copies of the elements
+  // may point to until the next compilation resolves them again from the names
+  std::unordered_set<const mjCBase*> gone;
+  for (const auto& [tex, first] : textures) { gone.insert(tex); }
+  for (const auto& [m, first] : meshes) { gone.insert(m); }
+  for (const mjCMesh* instance : meshinstances_) {
+    if (gone.count(instance->primary_)) { gone.insert(instance); }
+  }
+  auto drop = [&](auto*& pointer) {
+    if (gone.count(pointer)) { pointer = nullptr; }
+  };
+
+  // everything was checked, the spec is changed from here on: rewrite the references, in the
+  // spec and in the compiled copies of the elements
+  auto material = [&](mjCMaterial* mat) {
+    for (std::string& name : mat->spec_textures_) { texture(name); }
+    for (std::string& name : mat->textures_) { texture(name); }
+  };
+  auto light = [&](mjCLight* l) {
+    texture(l->spec_texture_);
+    texture(l->texture_);
+  };
+  auto geom = [&](mjCGeom* g) {
+    mesh(g->spec_meshname_);
+    mesh(g->meshname_);
+    drop(g->mesh);
+  };
+  auto site = [&](mjCSite* s) {
+    mesh(s->spec_meshname_);
+    mesh(s->meshname_);
+    drop(s->mesh);
+  };
+  for (mjCMaterial* mat : materials_) { material(mat); }
+  for (mjCLight* l : lights_) { light(l); }
+  for (mjCGeom* g : geoms_) { geom(g); }
+  for (mjCSite* s : sites_) { site(s); }
+  for (mjCDef* def : defaults_) {
+    material(&def->Material());
+    light(&def->Light());
+    geom(&def->Geom());
+    site(&def->Site());
+  }
+  for (mjCSensor* sensor : sensors_) {
+    object(sensor->spec.objtype, sensor->spec_objname_);
+    object(sensor->spec.objtype, sensor->objname_);
+    object(sensor->spec.reftype, sensor->spec_refname_);
+    object(sensor->spec.reftype, sensor->refname_);
+    drop(sensor->obj);
+    drop(sensor->ref);
+  }
+  for (mjCTuple* tuple : tuples_) {
+    size_t nobj = std::min(tuple->spec_objtype_.size(), tuple->spec_objname_.size());
+    for (size_t i = 0; i < nobj; i++) { object(tuple->spec_objtype_[i], tuple->spec_objname_[i]); }
+    nobj = std::min(tuple->objtype_.size(), tuple->objname_.size());
+    for (size_t i = 0; i < nobj; i++) { object(tuple->objtype_[i], tuple->objname_[i]); }
+    for (mjCBase*& obj : tuple->obj) { drop(obj); }
+  }
+
+  // delete the merged assets, with the instances which compilation made of the meshes
+  auto istexture = [&](mjCTexture* tex) { return textures.count(tex) > 0; };
+  auto ismesh    = [&](mjCMesh* m) { return meshes.count(m) > 0; };
+  textures_.erase(std::remove_if(textures_.begin(), textures_.end(), istexture), textures_.end());
+  meshes_.erase(std::remove_if(meshes_.begin(), meshes_.end(), ismesh), meshes_.end());
+  for (const auto& [tex, first] : textures) {
+    tex->id = -1;
+    tex->Release();
+  }
+  for (const auto& [m, first] : meshes) {
+    DeleteInstances(meshinstances_, m);
+    m->id = -1;
+    m->Release();
+  }
+
+  // update the ids and the maps from names to ids
+  for (mjCTexture* tex : textures_) { tex->id = -1; }
+  for (mjCMesh* m : meshes_) { m->id = -1; }
+  ProcessLists(/*checkrepeat=*/false);
+  InvalidateSignature();
+  return nmerged;
+}
+
+
 //------------------------------- COMPILER ---------------------------------------------------------
 
 // signature comparisons
@@ -5738,24 +5931,48 @@ mjModel* mjCModel::Compile(const mjVFS* vfs, mjModel** m, bool treeonly, bool te
 }
 
 
+// compile a mesh or texture with the compiler log handler, on any thread: an mju_error is
+// converted to a longjmp back here and stored as an exception, as Compile only calls setjmp on
+// the calling thread
+template <typename T>
+static void CompileAsset(T*                  asset,
+                         const mjVFS*        vfs,
+                         std::exception_ptr& exception,
+                         std::mutex&         exception_mutex,
+                         std::string*        warningtext) {
+  local_warningtext_ptr = warningtext;
+  auto previous_handler = _mjPRIVATE_setTlsLogHandler(compilerLogHandler);
+
+  // save the enclosing longjmp target, if any
+  std::jmp_buf saved;
+  std::memcpy(saved, error_jmp_buf, sizeof(std::jmp_buf));
+
+  if (setjmp(error_jmp_buf) == 0) {
+    try {
+      asset->Compile(vfs);
+    } catch (...) {
+      std::lock_guard<std::mutex> lock(exception_mutex);
+      if (!exception) { exception = std::current_exception(); }
+    }
+  } else {
+    std::lock_guard<std::mutex> lock(exception_mutex);
+    if (!exception) {
+      exception = std::make_exception_ptr(mjCError(asset, "engine error: %s", errortext));
+    }
+  }
+
+  std::memcpy(error_jmp_buf, saved, sizeof(std::jmp_buf));
+  _mjPRIVATE_setTlsLogHandler(previous_handler);
+  local_warningtext_ptr = nullptr;
+}
+
 // Helper function for mesh compilation used by both serial and parallel paths
 static void CompileMesh(mjCMesh*            mesh,
                         const mjVFS*        vfs,
                         std::exception_ptr& exception,
                         std::mutex&         exception_mutex,
                         std::string*        warningtext) {
-  local_warningtext_ptr = warningtext;
-  auto previous_handler = _mjPRIVATE_setTlsLogHandler(compilerLogHandler);
-
-  try {
-    mesh->Compile(vfs);
-  } catch (...) {
-    std::lock_guard<std::mutex> lock(exception_mutex);
-    if (!exception) { exception = std::current_exception(); }
-  }
-
-  _mjPRIVATE_setTlsLogHandler(previous_handler);
-  local_warningtext_ptr = nullptr;
+  CompileAsset(mesh, vfs, exception, exception_mutex, warningtext);
 }
 
 // Helper function for texture compilation used by both serial and parallel paths
@@ -5764,22 +5981,11 @@ static void CompileTexture(mjCTexture*         texture,
                            std::exception_ptr& exception,
                            std::mutex&         exception_mutex,
                            std::string*        warningtext) {
-  using Clock           = std::chrono::steady_clock;
-  using Seconds         = std::chrono::duration<double>;
-  local_warningtext_ptr = warningtext;
-  auto previous_handler = _mjPRIVATE_setTlsLogHandler(compilerLogHandler);
-
+  using Clock          = std::chrono::steady_clock;
+  using Seconds        = std::chrono::duration<double>;
   Clock::time_point t0 = Clock::now();
-  try {
-    texture->Compile(vfs);
-  } catch (...) {
-    std::lock_guard<std::mutex> lock(exception_mutex);
-    if (!exception) { exception = std::current_exception(); }
-  }
+  CompileAsset(texture, vfs, exception, exception_mutex, warningtext);
   texture->texture_time_ = Seconds(Clock::now() - t0).count();
-
-  _mjPRIVATE_setTlsLogHandler(previous_handler);
-  local_warningtext_ptr = nullptr;
 }
 
 // multi-threaded mesh and texture compilation with shared threadpool
@@ -6054,6 +6260,234 @@ struct ScopedDisableThreading {
 };
 #endif
 
+// return true if flex f can generate flex-flex contacts (with itself or another flex)
+static bool FlexCollidesWithFlex(const mjModel* m, int f) {
+  if (m->flex_contype[f] == 0 && m->flex_conaffinity[f] == 0) { return false; }
+  if ((m->flex_contype[f] & m->flex_conaffinity[f]) && m->flex_selfcollide[f] != mjFLEXSELF_NONE) {
+    return true;
+  }
+  for (int f2 = 0; f2 < m->nflex; f2++) {
+    if (f2 != f && ((m->flex_contype[f] & m->flex_conaffinity[f2]) ||
+                    (m->flex_contype[f2] & m->flex_conaffinity[f]))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// count DOFs and symbolic Hessian/Cholesky nonzeros of non-rigid flexes
+static void EstimateFlexArena(const mjModel* m,
+                              int            njmax,
+                              std::size_t*   nflexdof_out,
+                              std::size_t*   nflexdof_collide_out,
+                              std::size_t*   nH_out,
+                              std::size_t*   nL_out) {
+  *nflexdof_out         = 0;
+  *nflexdof_collide_out = 0;
+  *nH_out               = 0;
+  *nL_out               = 0;
+  if (!m->nflex || !m->nv) { return; }
+
+  // body_slot[b]: -1 if not a flex body, 0 if isolated flex body, 1 if colliding flex body
+  std::vector<int> body_slot(m->nbody, -1);
+  std::vector<int> body_collide(m->nbody, 0);
+  bool             has_flex     = false;
+  bool             has_isolated = false;
+  for (int f = 0; f < m->nflex; f++) {
+    if (m->flex_rigid[f]) { continue; }
+    has_flex     = true;
+    bool collide = FlexCollidesWithFlex(m, f);
+    if (!collide) { has_isolated = true; }
+    int        num    = m->flex_interp[f] ? m->flex_nodenum[f] : m->flex_vertnum[f];
+    int        adr    = m->flex_interp[f] ? m->flex_nodeadr[f] : m->flex_vertadr[f];
+    const int* bodyid = m->flex_interp[f] ? m->flex_nodebodyid : m->flex_vertbodyid;
+    for (int i = 0; i < num; i++) {
+      int b = m->body_weldid[bodyid[adr + i]];
+      if (b > 0 && m->body_dofnum[b] > 0) {
+        body_slot[b] = 0;
+        if (collide) { body_collide[b] = 1; }
+      }
+    }
+  }
+  if (!has_flex) { return; }
+
+  int              nb               = 0;
+  std::size_t      nflexdof         = 0;
+  std::size_t      nflexdof_collide = 0;
+  std::vector<int> nd;
+  nd.reserve(m->nbody);
+  for (int b = 1; b < m->nbody; b++) {
+    if (body_slot[b] == 0) {
+      body_slot[b] = nb++;
+      nd.push_back(m->body_dofnum[b]);
+      nflexdof += m->body_dofnum[b];
+      if (body_collide[b]) { nflexdof_collide += m->body_dofnum[b]; }
+    }
+  }
+  if (!nb || (!has_isolated && nflexdof <= static_cast<std::size_t>(njmax))) { return; }
+
+  // build upper-triangular weld-body adjacency across all static stencils of non-rigid flexes
+  std::vector<std::vector<int>> upper(nb);
+  auto                          add_clique = [&](const int* slots, int k) {
+    for (int a = 0; a < k; a++) {
+      int sa = slots[a];
+      if (sa < 0) continue;
+      for (int b = a + 1; b < k; b++) {
+        int sb = slots[b];
+        if (sb < 0 || sa == sb) continue;
+        if (sa < sb) {
+          upper[sa].push_back(sb);
+        } else {
+          upper[sb].push_back(sa);
+        }
+      }
+    }
+  };
+
+  for (int f = 0; f < m->nflex; f++) {
+    if (m->flex_rigid[f]) { continue; }
+    if (m->flex_interp[f]) {
+      int  order      = m->flex_interp[f];
+      bool shell_mode = order < 0;
+      order           = order < 0 ? -order : order;
+      int cx          = m->flex_cellnum[3 * f + 0];
+      int cy          = m->flex_cellnum[3 * f + 1];
+      int cz          = m->flex_cellnum[3 * f + 2];
+      int npe = shell_mode ? (order + 1) * (order + 1) : (order + 1) * (order + 1) * (order + 1);
+      int nelem_fe      = shell_mode ? 2 * (cy * cz + cx * cz + cx * cy) : cx * cy * cz;
+      const int* bodyid = m->flex_nodebodyid + m->flex_nodeadr[f];
+      int        gindices[125];
+      int        slots[125];
+      for (int fe = 0; fe < nelem_fe; fe++) {
+        if (shell_mode) {
+          mju_flexGatherFaceState(order,
+                                  cx,
+                                  cy,
+                                  cz,
+                                  fe,
+                                  nullptr,
+                                  nullptr,
+                                  nullptr,
+                                  nullptr,
+                                  nullptr,
+                                  nullptr,
+                                  gindices,
+                                  nullptr);
+        } else {
+          int ci = fe / (cy * cz);
+          int cj = (fe / cz) % cy;
+          int ck = fe % cz;
+          mju_flexGatherCellState(order,
+                                  cy,
+                                  cz,
+                                  ci,
+                                  cj,
+                                  ck,
+                                  nullptr,
+                                  nullptr,
+                                  nullptr,
+                                  nullptr,
+                                  nullptr,
+                                  nullptr,
+                                  gindices,
+                                  nullptr);
+        }
+        for (int i = 0; i < npe; i++) { slots[i] = body_slot[m->body_weldid[bodyid[gindices[i]]]]; }
+        add_clique(slots, npe);
+      }
+      continue;
+    }
+
+    int              vadr = m->flex_vertadr[f];
+    int              vnum = m->flex_vertnum[f];
+    std::vector<int> vslot(vnum, -1);
+    for (int v = 0; v < vnum; v++) {
+      vslot[v] = body_slot[m->body_weldid[m->flex_vertbodyid[vadr + v]]];
+    }
+
+    // elements (triangles, tetrahedra, capsules)
+    int dim  = m->flex_dim[f];
+    int eadr = m->flex_elemdataadr[f];
+    for (int e = 0; e < m->flex_elemnum[f]; e++) {
+      const int* elem = m->flex_elem + eadr + e * (dim + 1);
+      int        slots[4];
+      for (int k = 0; k <= dim; k++) { slots[k] = vslot[elem[k]]; }
+      add_clique(slots, dim + 1);
+    }
+
+    // edges and 2D bending flaps
+    int  edgeadr    = m->flex_edgeadr[f];
+    int  edgenum    = m->flex_edgenum[f];
+    bool has_bend2d = (dim == 2 && m->flex_bendingadr[f] >= 0);
+    for (int e = 0; e < edgenum; e++) {
+      int v0       = m->flex_edge[2 * (edgeadr + e) + 0];
+      int v1       = m->flex_edge[2 * (edgeadr + e) + 1];
+      int slots[4] = {vslot[v0], vslot[v1], -1, -1};
+      if (has_bend2d) {
+        int f0 = m->flex_edgeflap[2 * (edgeadr + e) + 0];
+        int f1 = m->flex_edgeflap[2 * (edgeadr + e) + 1];
+        if (f0 >= 0 && f1 >= 0) {
+          slots[2] = vslot[f0];
+          slots[3] = vslot[f1];
+          add_clique(slots, 4);
+          continue;
+        }
+      }
+      add_clique(slots, 2);
+    }
+
+    // 1D rod bending (adjacent edges) or mjEQ_FLEXVERT (vertex 1-ring star)
+    if ((dim == 1 && m->flex_bendingadr[f] >= 0) || m->flex_edgeequality[f] == 2) {
+      std::vector<std::vector<int>> star(vnum);
+      for (int v = 0; v < vnum; v++) { star[v].push_back(vslot[v]); }
+      for (int e = 0; e < edgenum; e++) {
+        int v0 = m->flex_edge[2 * (edgeadr + e) + 0];
+        int v1 = m->flex_edge[2 * (edgeadr + e) + 1];
+        star[v0].push_back(vslot[v1]);
+        star[v1].push_back(vslot[v0]);
+      }
+      for (int v = 0; v < vnum; v++) {
+        add_clique(star[v].data(), static_cast<int>(star[v].size()));
+      }
+    }
+  }
+
+  for (int q = 0; q < nb; q++) {
+    auto& row = upper[q];
+    std::sort(row.begin(), row.end());
+    row.erase(std::unique(row.begin(), row.end()), row.end());
+  }
+
+  // block-level symbolic reverse-Cholesky count on the static flex graph
+  std::vector<int>         parent(nb, -1);
+  std::vector<int>         flag(nb, -1);
+  std::vector<std::size_t> offdiag_dofs(nb, 0);
+  std::size_t              nH = 0;
+  for (int q = nb - 1; q >= 0; q--) {
+    flag[q]         = q;
+    std::size_t dq  = static_cast<std::size_t>(nd[q]);
+    nH             += dq * (dq + 1) / 2;
+    for (int p0 : upper[q]) {
+      nH += dq * static_cast<std::size_t>(nd[p0]);
+      for (int p = p0; p >= 0 && flag[p] != q; p = parent[p]) {
+        if (parent[p] == -1) { parent[p] = q; }
+        flag[p]          = q;
+        offdiag_dofs[p] += dq;
+      }
+    }
+  }
+
+  std::size_t nL = 0;
+  for (int p = 0; p < nb; p++) {
+    std::size_t dp  = static_cast<std::size_t>(nd[p]);
+    nL             += dp * offdiag_dofs[p] + dp * (dp + 1) / 2;
+  }
+
+  *nflexdof_out         = nflexdof;
+  *nflexdof_collide_out = nflexdof_collide;
+  *nH_out               = nH;
+  *nL_out               = nL;
+}
 
 // first stage of compilation: the assets and the kinematic tree; keyframes are added and
 // completed only if asked, which a full compilation does and an operation on the spec does not
@@ -6365,6 +6799,12 @@ void mjCModel::TryCompile(mjModel*& m, mjData*& d, const mjVFS* vfs) {
   // compute non-zeros in actuator_moment
   m->nJmom = nJmom = CountNJmom(m);
 
+  // mean inertia (deprecated)
+  if (mjuu_defined(stat.meaninertia)) {
+    AddWarning(
+        "statistic attribute 'meaninertia' is deprecated and will be removed in a future release: "
+        "it does not affect simulation");
+  }
 
   // scale mass (deprecated)
   if (compiler.settotalmass > 0) {
@@ -6380,27 +6820,33 @@ void mjCModel::TryCompile(mjModel*& m, mjData*& d, const mjVFS* vfs) {
     // memory size is user-specified in bytes
     m->narena = memory;
   } else {
-    const int nconmax = m->nconmax == -1 ? 100 : m->nconmax;
-    const int njmax   = m->njmax == -1 ? 500 : m->njmax;
-    if (nstack != -1) {
+    const int   nconmax  = m->nconmax == -1 ? 100 : m->nconmax;
+    const int   njmax    = m->njmax == -1 ? 500 : m->njmax;
+    std::size_t nflexdof = 0, nflexdof_collide = 0, nH_flex = 0, nL_flex = 0;
+    if (nstack == -1) {
+      // use a conservative heuristic if neither memory nor nstack is specified in XML; in sparse
+      // mode, size non-rigid flexes symbolically via their static Hessian and Cholesky factor
+      // instead of including their DOFs in the dense quadratic term (MakeHessian falls back to CG
+      // if runtime contact fill-in exhausts the arena)
+      if (mj_isSparse(m)) {
+        EstimateFlexArena(m, njmax, &nflexdof, &nflexdof_collide, &nH_flex, &nL_flex);
+      }
+      const std::size_t ndense  = njmax + m->neq + m->nv - nflexdof;
+      const std::size_t nlinear = m->nq +
+                                  m->nv +
+                                  m->nu +
+                                  m->na +
+                                  m->nbody +
+                                  m->njnt +
+                                  m->ngeom +
+                                  m->nsite +
+                                  m->neq +
+                                  m->ntendon +
+                                  m->nwrap;
+      m->narena                 = sizeof(mjtNum) * mjMAX(1000, 5 * ndense * ndense + 20 * nlinear);
+    } else {
       // (legacy) stack size is user-specified as multiple of sizeof(mjtNum)
       m->narena = sizeof(mjtNum) * nstack;
-    } else {
-      // use a conservative heuristic if neither memory nor nstack is specified in XML
-      m->narena = sizeof(mjtNum) *
-                  static_cast<size_t>(mjMAX(
-                      1000,
-                      5 * (njmax + m->neq + m->nv) * (njmax + m->neq + m->nv) + 20 * (m->nq +
-                                                                                      m->nv +
-                                                                                      m->nu +
-                                                                                      m->na +
-                                                                                      m->nbody +
-                                                                                      m->njnt +
-                                                                                      m->ngeom +
-                                                                                      m->nsite +
-                                                                                      m->neq +
-                                                                                      m->ntendon +
-                                                                                      m->nwrap)));
     }
 
     // add an arena space equal to memory footprint prior to the introduction of the arena
@@ -6410,6 +6856,31 @@ void mjCModel::TryCompile(mjModel*& m, mjData*& d, const mjVFS* vfs) {
                                       njmax * m->nv * (2 * sizeof(int) + 2 * sizeof(mjtNum)) +
                                       njmax * njmax * (sizeof(int) + sizeof(mjtNum)));
     m->narena                     += arena_bytes;
+
+    // if symbolic Hessian + Cholesky factor of flexes exceeds the linear njmax*nflexdof allocation
+    // already included in arena_bytes, add the excess (e.g. 3D grids with higher fill), plus a
+    // bounded allowance for two-sided contact Jacobians/fill on colliding flexes
+    if (nflexdof) {
+      const std::size_t njmax_flex_bytes =
+          static_cast<std::size_t>(njmax) * nflexdof * (2 * sizeof(int) + 2 * sizeof(mjtNum));
+      const std::size_t nL_num            = (m->opt.cone == mjCONE_ELLIPTIC) ? 2 : 1;
+      const std::size_t flex_solver_bytes = nH_flex * (6 * sizeof(int) + 5 * sizeof(mjtNum)) +
+                                            nL_flex * (3 * sizeof(int) + nL_num * sizeof(mjtNum));
+      // 1.5x safety factor on static symbolic Hessian + Cholesky factor bytes
+      if (flex_solver_bytes > njmax_flex_bytes) {
+        m->narena += flex_solver_bytes - njmax_flex_bytes;
+      }
+      m->narena += flex_solver_bytes / 2;
+      if (nflexdof_collide) {
+        // cap contact fill-in allowance at 64 MB so large colliding flexes do not allocate
+        // hundreds of megabytes by default (heavier fill-in falls back to CG)
+        constexpr std::size_t kMaxCollideBytes  = 64 << 20;
+        const std::size_t     collide_bytes     = static_cast<std::size_t>(njmax) *
+                                                  nflexdof_collide *
+                                                  (2 * sizeof(int) + 2 * sizeof(mjtNum));
+        m->narena                              += std::min(collide_bytes, kMaxCollideBytes);
+      }
+    }
 
     // round up to the nearest megabyte
     constexpr std::size_t kMegabyte   = 1 << 20;
@@ -6512,8 +6983,9 @@ void mjCModel::TryCompile(mjModel*& m, mjData*& d, const mjVFS* vfs) {
   // normalize keyframe quaternions
   for (int i = 0; i < m->nkey; i++) { mj_normalizeQuat(m, m->key_qpos + i * m->nq); }
 
-  // set constant fields
-  mj_setConst(m, d);
+  // set constant fields, after aligning 2D flexes, including those which compilation derives once
+  mj_alignFlex(m);
+  mj_setCompiledConst(m, d);
 
   // automatic spring-damper adjustment
   AutoSpringDamper(m);
@@ -6906,18 +7378,29 @@ void mjCModel::BackValues(const mjModel* m, bool tospec, bool write) {
   // data of the model in its reference configuration, made when it is first needed
   std::unique_ptr<mjData, void (*)(mjData*)> reference(nullptr, mj_deleteData);
 
-  // the anchor which a connect between bodies has in its second body, as mj_setConst computes it
-  // from the model as it is now
-  auto secondanchor = [&](int i, mjtNum anchor[3]) {
+  // the anchor which a connect between bodies has in its second body, or the relative pose of a
+  // weld between bodies, as mj_setConst computes it from the model as it is now
+  auto computeddata = [&](int i, mjtNum* computed) {
     if (!reference) {
       reference.reset(mj_makeData(m));
       mj_kinematics(m, reference.get());
     }
-    const mjData* d = reference.get();
-    mjtNum        pos[3];
-    mj_local2Global(reference.get(), pos, 0, m->eq_data + mjNEQDATA * i, 0, m->eq_obj1id[i], 0);
-    mju_subFrom3(pos, d->xpos + 3 * m->eq_obj2id[i]);
-    mju_mulMatTVec3(anchor, d->xmat + 9 * m->eq_obj2id[i], pos);
+    const mjData* d    = reference.get();
+    const mjtNum* data = m->eq_data + mjNEQDATA * i;
+    int           id1  = m->eq_obj1id[i];
+    int           id2  = m->eq_obj2id[i];
+    mjtNum        pos[3], quat[4];
+    if (m->eq_type[i] == mjEQ_CONNECT) {
+      mj_local2Global(reference.get(), pos, 0, data, 0, id1, 0);
+      mju_subFrom3(pos, d->xpos + 3 * id2);
+      mju_mulMatTVec3(computed, d->xmat + 9 * id2, pos);
+    } else {
+      mj_local2Global(reference.get(), pos, 0, data, 0, id2, 0);
+      mju_subFrom3(pos, d->xpos + 3 * id1);
+      mju_mulMatTVec3(computed, d->xmat + 9 * id1, pos);
+      mju_negQuat(quat, d->xquat + 4 * id1);
+      mju_mulQuat(computed + 3, quat, d->xquat + 4 * id2);
+    }
   };
 
   // option and visual
@@ -7359,8 +7842,8 @@ void mjCModel::BackValues(const mjModel* m, bool tospec, bool write) {
         // told apart only where it is reported: compilation ends here too, with this anchor new
         if (tospec && !write) {
           mjtNum computed[3];
-          secondanchor(i, computed);
-          if (computed[0] != data[3] || computed[1] != data[4] || computed[2] != data[5]) {
+          computeddata(i, computed);
+          if (Differs(computed, data + 3, 3)) {
             refuse(pe,
                    "the anchor of a connect in its second body",
                    "it is computed from the anchor in the first body");
@@ -7371,15 +7854,28 @@ void mjCModel::BackValues(const mjModel* m, bool tospec, bool write) {
       copy(pe->spec.data + 6, pe->data + 6, data + 6, mjNEQDATA - 6);
     } else if (pe->type == mjEQ_WELD && pe->objtype == mjOBJ_BODY) {
       // a weld between bodies: the anchor and the torque scale are given, and so is the relative
-      // pose unless compilation computes it. One which was computed is given once it is changed
-      // in the model, or once the anchor is: it was computed for the anchor as it was
-      const bool computed =
-          !pe->spec.data[6] && !pe->spec.data[7] && !pe->spec.data[8] && !pe->spec.data[9];
-      const bool anchor = copy(pe->spec.data, pe->data, data, 3);
-      if (Differs(pe->data + 3, data + 3, 7) || (anchor && computed)) {
+      // pose unless it is marked in data[11], computed from the anchor; the spec marks it with a
+      // zero quaternion
+      copy(pe->spec.data, pe->data, data, 3);
+      const bool marked = data[11];
+      if (Differs(pe->data + 3, data + 3, 7) || Differs(pe->data + 11, data + 11, 1)) {
+        if (tospec && !write && marked) {
+          mjtNum computed[7];
+          computeddata(i, computed);
+          if (Differs(computed, data + 3, 7)) {
+            refuse(pe,
+                   "the relative pose of a weld which is marked as computed",
+                   "it is computed from the anchor");
+          }
+        }
         if (write) {
           Back(pe->data + 3, data + 3, 7);
-          if (tospec) { tospecvalues(pe->spec.data + 3, pe->data + 3, 7); }
+          Back(pe->data + 11, data + 11, 1);
+          if (tospec && marked) {
+            std::fill(pe->spec.data + 6, pe->spec.data + 10, 0);
+          } else if (tospec) {
+            tospecvalues(pe->spec.data + 3, pe->data + 3, 7);
+          }
         }
       }
       copy(pe->spec.data + 10, pe->data + 10, data + 10);
@@ -7422,6 +7918,7 @@ void mjCModel::BackValues(const mjModel* m, bool tospec, bool write) {
     copy(pt->spec.damping + 1, pt->damping + 1, m->tendon_dampingpoly + mjNPOLY * i, mjNPOLY);
     copy(&pt->spec.armature, &pt->armature, m->tendon_armature + i);
     copy(&pt->spec.frictionloss, &pt->frictionloss, m->tendon_frictionloss + i);
+    copy(pt->spec.springlength, pt->springlength, m->tendon_lengthspring + 2 * i, 2);
     copyvector(pt->spec_userdata_, pt->userdata_, m->tendon_user + nuser_tendon * i, nuser_tendon);
   }
 
@@ -7600,6 +8097,10 @@ void mjCModel::ResolvePlugin(mjCBase*           obj,
     if (plugin_slot == -1) { throw mjCError(obj, "unrecognized plugin '%s'", pname.c_str()); }
   }
 
+  // meshes sharing a plugin instance resolve it concurrently on compiler worker threads
+  static std::mutex           mutex;
+  std::lock_guard<std::mutex> lock(mutex);
+
   // implicit plugin instance
   if (*plugin_instance && (*plugin_instance)->plugin_slot == -1) {
     (*plugin_instance)->plugin_slot = plugin_slot;
@@ -7614,7 +8115,12 @@ void mjCModel::ResolvePlugin(mjCBase*           obj,
                      "unrecognized name '%s' for plugin instance",
                      plugin_instance_name.c_str());
     }
-    (*plugin_instance)->plugin_slot = plugin_slot;
+
+    // write only if changed: worker threads read plugin_slot after this call without the lock
+    if ((*plugin_instance)->plugin_slot != plugin_slot) {
+      (*plugin_instance)->plugin_slot = plugin_slot;
+    }
+
     if (plugin_slot != -1 && plugin_slot != (*plugin_instance)->plugin_slot) {
       throw mjCError(obj, "'plugin' attribute does not match that of the instance");
     }

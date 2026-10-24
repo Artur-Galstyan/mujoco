@@ -3,9 +3,12 @@
 import ast
 import doctest
 import importlib
+import importlib.machinery
 import importlib.metadata
 import importlib.util
+import inspect
 import io
+import keyword
 import os
 import re
 import shutil
@@ -14,8 +17,11 @@ import sys
 import tempfile
 from pathlib import Path
 
+import tomllib
+
 ROOT = Path(__file__).resolve().parents[2]
 NATIVE = (
+  '_batch',
   '_callbacks',
   '_constants',
   '_enums',
@@ -27,20 +33,33 @@ NATIVE = (
   '_specs',
   '_structs',
 )
+OPTIONAL_NATIVE = (
+  '_render_filament',
+  'experimental/studio/native_viewer_cc',
+  'experimental/studio/ux',
+  'experimental/studio/sim',
+  'experimental/studio/window',
+  'experimental/studio/web/headless_ui',
+  'experimental/studio/web/state_payload',
+  'experimental/dear_imgui/dear_imgui',
+  'experimental/implot/implot',
+)
 STUBS = (
   '__init__.pyi',
   *(f'{name}.pyi' for name in NATIVE),
   'gl_context.pyi',
   'renderer.pyi',
   'rollout.pyi',
+  'mjrf.pyi',
+  'batch.pyi',
   'viewer.pyi',
   'rendering/classic/gl_context.pyi',
   'rendering/classic/renderer.pyi',
   '_render_filament.pyi',
   'rendering/filament/__init__.pyi',
   'rendering/filament/renderer.pyi',
+  'rendering/filament/model_scene.pyi',
   'experimental/studio/native_viewer_cc.pyi',
-  'experimental/studio/renderer.pyi',
   'experimental/studio/ux.pyi',
   'experimental/studio/sim.pyi',
   'experimental/studio/window.pyi',
@@ -56,22 +75,30 @@ def installed_stubs() -> Path:
 
   upstream = importlib.metadata.distribution('mujoco')
   companion = importlib.metadata.distribution('typed-mujoco')
-  assert companion.version == '3.15.0.0', companion.version
+  project = tomllib.loads((ROOT / 'typed-mujoco/pyproject.toml').read_text())[
+    'project'
+  ]
+  version = project['version']
+  assert version.startswith('3.17.0.'), version
+  assert companion.version == version, companion.version
+  assert companion.metadata['Requires-Python'] == project['requires-python']
+  dependency = f'mujoco>={version.rsplit(".", 1)[0]}'
+  assert dependency in project['dependencies']
   assert any(
-    req.replace(' ', '') == 'mujoco>=3.15.0' for req in companion.requires or []
-  ), 'Companion must require MuJoCo 3.15.0 or newer'
+    req.replace(' ', '') == dependency for req in companion.requires or []
+  ), f'Companion must require {dependency}'
   assert upstream.files is not None and companion.files is not None
   upstream_files = {p.as_posix() for p in upstream.files}
   owned = {p.as_posix() for p in companion.files}
   stub_files = {p for p in owned if p.startswith('mujoco-stubs/')}
   expected = {'mujoco-stubs/py.typed', *(f'mujoco-stubs/{p}' for p in STUBS)}
-  assert len(STUBS) == 29 and stub_files == expected, (
+  assert len(STUBS) == 32 and stub_files == expected, (
     f'missing: {sorted(expected - stub_files)}; extra: {sorted(stub_files - expected)}'
   )
   assert not (owned & upstream_files), 'Overlapping distribution records'
   other_files = owned - stub_files
   assert all(
-    p.startswith('typed_mujoco-3.15.0.0.dist-info/') for p in other_files
+    p.startswith(f'typed_mujoco-{version}.dist-info/') for p in other_files
   ), f'Companion contains non-stub files: {sorted(other_files)}'
   assert 'mujoco/__init__.py' in upstream_files
   package = Path(str(companion.locate_file('mujoco-stubs'))).resolve()
@@ -81,7 +108,6 @@ def installed_stubs() -> Path:
   assert runtime != (ROOT / 'python/mujoco/__init__.py').resolve()
   assert (package / 'py.typed').read_text().strip() == 'partial'
   assert all((package / name).is_file() for name in STUBS)
-  assert not (package / 'mjrf.pyi').exists()
   spec = importlib.util.find_spec('mujoco')
   assert spec and spec.origin and Path(spec.origin).resolve() == runtime
   assert Path(mujoco.__file__).resolve() == runtime
@@ -110,9 +136,11 @@ def declared(nodes: list[ast.stmt]) -> set[str]:
 
 
 def check_class(label: str, node: ast.ClassDef, runtime: type) -> None:
-  actual = {name for name in vars(runtime) if not name.startswith('_')}
-  if label == '_specs.MjVisual':
-    actual.discard('global')  # A Python keyword cannot be a declared field.
+  actual = {
+    name
+    for name in vars(runtime)
+    if not name.startswith('_') and not keyword.iskeyword(name)
+  }
   promised = declared(node.body)
   assert actual == promised, (
     f'{label}: missing {sorted(actual - promised)}, extra {sorted(promised - actual)}'
@@ -142,12 +170,28 @@ def check_class(label: str, node: ast.ClassDef, runtime: type) -> None:
       )
 
 
-def check_native_api(package: Path) -> None:
+def check_native_api(package: Path) -> set[str]:
   import mujoco
 
+  upstream = importlib.metadata.distribution('mujoco')
+  assert upstream.files is not None
+  upstream_files = {p.as_posix() for p in upstream.files}
+  available_optional = set()
   native_exports = set()
-  for name in NATIVE:
-    module = importlib.import_module(f'mujoco.{name}')
+  for name in (*NATIVE, *OPTIONAL_NATIVE):
+    if name in OPTIONAL_NATIVE:
+      prefix = f'mujoco/{name}.'
+      if not any(
+        path.startswith(prefix)
+        and path.endswith(tuple(importlib.machinery.EXTENSION_SUFFIXES))
+        for path in upstream_files
+      ):
+        print(
+          f'Optional native module absent from wheel: mujoco.{name.replace("/", ".")} (stub checked statically later)'
+        )
+        continue
+      available_optional.add(name)
+    module = importlib.import_module(f'mujoco.{name.replace("/", ".")}')
     tree = ast.parse((package / f'{name}.pyi').read_text())
     actual = {key for key in vars(module) if not key.startswith('_')}
     promised = declared(tree.body)
@@ -155,9 +199,13 @@ def check_native_api(package: Path) -> None:
       f'{name}: missing {sorted(actual - promised)}, extra {sorted(promised - actual)}'
     )
     for node in tree.body:
-      if isinstance(node, ast.ClassDef) and not node.name.startswith('_'):
+      if isinstance(node, ast.ClassDef) and (
+        not node.name.startswith('_')
+        or name == '_structs'
+        and node.name.startswith(('_MjModel', '_MjData'))
+      ):
         check_class(f'{name}.{node.name}', node, getattr(module, node.name))
-    if name not in {'_simulate', '_rollout'}:
+    if name in NATIVE and name not in {'_batch', '_simulate', '_rollout'}:
       native_exports.update(actual)
 
   root = ast.parse((package / '__init__.pyi').read_text())
@@ -165,16 +213,99 @@ def check_native_api(package: Path) -> None:
     alias.asname or alias.name
     for node in root.body
     if isinstance(node, ast.ImportFrom)
-    and node.module
     and node.module in {f'mujoco.{name}' for name in NATIVE}
     for alias in node.names
     if not alias.name.startswith('_')
   }
-  missing = native_exports & vars(mujoco).keys() - exports - declared(root.body)
-  extra = exports - vars(mujoco).keys()
+  public_root = {key for key in vars(mujoco) if not key.startswith('_')}
+  missing = native_exports & public_root - exports - declared(root.body)
+  extra = (exports | declared(root.body)) - public_root
   assert not missing and not extra, (
     f'mujoco: missing root exports {sorted(missing)}, extra {sorted(extra)}'
   )
+
+  if '_render_filament' in available_optional:
+    from mujoco import _render_filament, mjrf
+
+    reexports = {
+      key for key in vars(_render_filament) if not key.startswith('_')
+    }
+    actual = {key for key in vars(mjrf) if not key.startswith('_')}
+    assert actual == reexports, (
+      f'mjrf: missing {sorted(reexports - actual)}, extra {sorted(actual - reexports)}'
+    )
+    assert all(
+      getattr(mjrf, key) is getattr(_render_filament, key) for key in reexports
+    ), 'mjrf reexports must be native objects'
+    tree = ast.parse((package / 'mjrf.pyi').read_text())
+    imports = {
+      alias.asname or alias.name
+      for node in tree.body
+      if isinstance(node, ast.ImportFrom)
+      and node.module == 'mujoco._render_filament'
+      for alias in node.names
+    }
+    promised = declared(tree.body) | (reexports if '*' in imports else imports)
+    assert promised == actual, (
+      f'mjrf.pyi: missing {sorted(actual - promised)}, extra {sorted(promised - actual)}'
+    )
+  return available_optional
+
+
+def check_python_signatures(package: Path, optional: set[str]) -> None:
+  targets = [('batch', 'Batch', ('__init__', 'step', 'rollout', 'jac', 'ray'))]
+  if '_render_filament' in optional:
+    targets.append(
+      (
+        'rendering/filament/model_scene',
+        'ModelScene',
+        ('__init__', 'get_renderable'),
+      )
+    )
+  for path, class_name, methods in targets:
+    module = importlib.import_module(f'mujoco.{path.replace("/", ".")}')
+    tree = ast.parse((package / f'{path}.pyi').read_text())
+    classes = {
+      node.name: node for node in tree.body if isinstance(node, ast.ClassDef)
+    }
+    assert class_name in classes, f'{path}: missing {class_name}'
+    stub_methods = {
+      node.name: node
+      for node in classes[class_name].body
+      if isinstance(node, ast.FunctionDef)
+    }
+    for name in methods:
+      assert name in stub_methods, f'{path}.{class_name}: missing {name}'
+      args = stub_methods[name].args
+      positional = [*args.posonlyargs, *args.args]
+      signature: list[tuple[str, int, bool]] = [
+        (
+          arg.arg,
+          inspect.Parameter.POSITIONAL_ONLY
+          if i < len(args.posonlyargs)
+          else inspect.Parameter.POSITIONAL_OR_KEYWORD,
+          i < len(positional) - len(args.defaults),
+        )
+        for i, arg in enumerate(positional)
+      ]
+      if args.vararg:
+        signature.append(
+          (args.vararg.arg, inspect.Parameter.VAR_POSITIONAL, True)
+        )
+      signature.extend(
+        (arg.arg, inspect.Parameter.KEYWORD_ONLY, default is None)
+        for arg, default in zip(args.kwonlyargs, args.kw_defaults)
+      )
+      if args.kwarg:
+        signature.append((args.kwarg.arg, inspect.Parameter.VAR_KEYWORD, True))
+      runtime = inspect.signature(getattr(getattr(module, class_name), name))
+      actual = [
+        (param.name, param.kind, param.default is inspect.Parameter.empty)
+        for param in runtime.parameters.values()
+      ]
+      assert signature == actual, (
+        f'{path}.{class_name}.{name}: stub {signature}, runtime {actual}'
+      )
 
 
 def run(
@@ -201,6 +332,7 @@ def check_docs(
     ('_functions.pyi', 'mj_forward'),
     ('_functions.pyi', 'mj_jac'),
     ('_callbacks.pyi', 'set_mjcb_control'),
+    ('batch.pyi', 'module'),
     ('rollout.pyi', 'Rollout'),
     ('rollout.pyi', 'rollout'),
   }
@@ -211,6 +343,7 @@ def check_docs(
     '_specs.pyi',
     '_functions.pyi',
     '_callbacks.pyi',
+    'batch.pyi',
     'rollout.pyi',
   ):
     path = package / stub
@@ -232,6 +365,20 @@ def check_docs(
       )
       source = cwd / f'doc_{stub.removesuffix(".pyi")}_{name}.py'
       source.write_text(''.join(example.source for example in test.examples))
+      run(
+        [
+          ruff,
+          'check',
+          '--select',
+          'I',
+          '--fix',
+          '--config',
+          str(ROOT / 'typed-mujoco/pyproject.toml'),
+          str(source),
+        ],
+        cwd,
+        env,
+      )
       run([*ty_cmd, str(source)], cwd, env)
       run(
         [
@@ -239,8 +386,6 @@ def check_docs(
           'check',
           '--config',
           str(ROOT / 'typed-mujoco/pyproject.toml'),
-          '--ignore',
-          'I',
           str(source),
         ],
         cwd,
@@ -256,7 +401,10 @@ def check_docs(
 
 
 def smoke() -> None:
+  import numpy as np
+
   import mujoco
+  from mujoco import batch
 
   xml = (
     '<mujoco><worldbody><body name="ball"><freejoint/>'
@@ -278,6 +426,30 @@ def smoke() -> None:
   mujoco.to_zip(spec, archive)
   archive.seek(0)
   assert mujoco.from_zip(archive).compile().nbody == model.nbody
+
+  spec = mujoco.MjSpec()
+  body = spec.worldbody.add_body(name='arm')
+  assert isinstance(body.fuse, int)
+  body.add_joint(name='hinge', type=mujoco.mjtJoint.mjJNT_HINGE)
+  body.add_geom(size=[0.1], mass=1)
+  spec.add_actuator(
+    type=mujoco.mjtActuator.mjACTUATOR_POSITION,
+    target='hinge',
+    trntype=mujoco.mjtTrn.mjTRN_JOINT,
+    gainprm=[10] + [0] * 9,
+    biasprm=[0, -10, 0] + [0] * 7,
+  )
+  model = spec.compile()
+  assert model.nu == 1
+  assert model.actuator_gainprm[0, 0] == 10
+  assert model.actuator_biasprm[0, 1] == -10
+  data = mujoco.MjData(model)
+  assert data.bvh_active.dtype == np.dtype(np.bool_)
+  assert model.plugin_attr.dtype == np.dtype(np.int8)
+  assert data.plugin_data.dtype == np.dtype(np.uint64)
+  simulations = batch.Batch(model, 1, nthread=1, persistent=True)
+  simulations.step()
+  assert simulations.get_data(0).time > 0
 
 
 def check_typing(cwd: Path, package: Path) -> None:
@@ -309,6 +481,7 @@ def check_typing(cwd: Path, package: Path) -> None:
   ty = shutil.which('ty')
   ruff = shutil.which('ruff')
   assert ty and ruff, 'ty and ruff must be on PATH'
+  assert run([ty, '--version'], cwd, env).startswith('ty 0.0.85 ')
   cmd = [
     ty,
     'check',
@@ -324,8 +497,16 @@ def check_typing(cwd: Path, package: Path) -> None:
     'concise',
     '--error-on-warning',
   ]
-  for name in ('consumer.py', 'filament_consumer.py', 'studio_consumer.py'):
-    shutil.copyfile(Path(__file__).with_name(name), cwd / name)
+  consumers = (
+    'consumer.py',
+    'filament_consumer.py',
+    'studio_consumer.py',
+    'batch_consumer.py',
+  )
+  for name in consumers:
+    source = Path(__file__).with_name(name)
+    assert source.is_file(), f'Missing static consumer: {source}'
+    shutil.copyfile(source, cwd / name)
   run(
     [
       ruff,
@@ -352,7 +533,7 @@ def check_typing(cwd: Path, package: Path) -> None:
     env,
   )
   run([*cmd, str(Path(__file__))], cwd, env)
-  for name in ('consumer.py', 'filament_consumer.py', 'studio_consumer.py'):
+  for name in consumers:
     run([*cmd, str(cwd / name)], cwd, env)
   run([*cmd, *(str(package / stub) for stub in STUBS)], cwd, env)
   check_docs(package, cwd, env, cmd, ruff)
@@ -406,16 +587,51 @@ def check_typing(cwd: Path, package: Path) -> None:
       'invalid-argument-type',
     ),
     'bad_studio': ("ux.load_theme(def_theme='bad')", 'invalid-argument-type'),
-    'old_spec': ('spec.copy_back(model)', 'unresolved-attribute'),
-    'old_actuator': ('mujoco.mjtActuator', 'unresolved-attribute'),
-    'old_enum': (
-      'mujoco.mjtCtrlInput.mjINPUT_PRESSURE',
+    'bad_actuatortype': (
+      'mujoco.mjtActuator.mjACTUATOR_NOT_REAL',
       'unresolved-attribute',
+    ),
+    'bad_actuator_argument': (
+      "spec.add_actuator(type='bad')",
+      'invalid-argument-type',
+    ),
+    'no_moment_setter': (
+      "data.actuator('motor').moment = np.zeros(model.nv)",
+      'invalid-assignment',
+    ),
+    'bad_batch': ("batch.Batch(model, nsim='bad')", 'invalid-argument-type'),
+    'bad_geom_view': (
+      'batch.Batch(model, 1).geom(0).qpos',
+      'unresolved-attribute',
+    ),
+    'bad_joint_view': (
+      'batch.Batch(model, 1).joint(0).mass',
+      'unresolved-attribute',
+    ),
+    'readonly_joint_id': (
+      'batch.Batch(model, 1).joint(0).id = 0',
+      'invalid-assignment',
+    ),
+    'readonly_joint_name': (
+      "batch.Batch(model, 1).joint(0).name = 'x'",
+      'invalid-assignment',
+    ),
+    'readonly_body_xpos': (
+      'batch.Batch(model, 1).body(0).xpos = [0, 0, 0]',
+      'invalid-assignment',
+    ),
+    'readonly_body_parentid': (
+      'batch.Batch(model, 1).body(0).parentid = [0]',
+      'invalid-assignment',
+    ),
+    'bad_batch_field': (
+      'batch.Batch(model, 1).not_a_field',
+      'invalid-attribute-access',
     ),
   }
   prefix = (
     'import numpy as np\nimport mujoco\n'
-    'from mujoco import _render_filament as mjrf\n'
+    'from mujoco import batch, mjrf\n'
     'from mujoco.experimental.studio import ux\n'
     'model = mujoco.MjModel.from_xml_string("<mujoco/>")\n'
     'data = mujoco.MjData(model)\nspec = mujoco.MjSpec()\n'
@@ -434,11 +650,15 @@ def check_typing(cwd: Path, package: Path) -> None:
 
 def main() -> None:
   package = installed_stubs()
-  check_native_api(package)
+  optional = check_native_api(package)
+  check_python_signatures(package, optional)
   smoke()
   with tempfile.TemporaryDirectory() as directory:
     check_typing(Path(directory), package)
-  print('Installed companion, runtime, native API, docs, ty and Ruff passed')
+  print(
+    f'Installed companion and MuJoCo {importlib.metadata.version("mujoco")}: '
+    'runtime, core and available optional native APIs, docs, Ty and Ruff passed'
+  )
 
 
 if __name__ == '__main__':

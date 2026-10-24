@@ -47,7 +47,7 @@ The separate environment does not use other installed-consumer directories.
 uv venv --python 3.13 build/mjx-typing-consumer/venv
 uv build mjx --out-dir build/mjx-typing-consumer/dist --python build/mjx-typing-consumer/venv/bin/python
 uv pip install --python build/mjx-typing-consumer/venv/bin/python .
-uv pip install --python build/mjx-typing-consumer/venv/bin/python build/mjx-typing-consumer/dist/mujoco_mjx-3.15.1-py3-none-any.whl ty==0.0.85 ruff==0.17.0
+uv pip install --python build/mjx-typing-consumer/venv/bin/python ./mjx ty==0.0.85 ruff==0.17.0
 build/mjx-typing-consumer/venv/bin/python mjx/tests/typing/check.py
 build/mjx-typing-consumer/venv/bin/python mjx/tests/typing/runtime_smoke.py
 build/mjx-typing-consumer/venv/bin/python -m unittest mujoco.mjx._src.dataclasses_test mujoco.mjx._src.io_test.DataIOTest.test_get_data_runs

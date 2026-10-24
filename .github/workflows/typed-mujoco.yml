@@ -22,6 +22,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-15, ubuntu-24.04]
+        runtime: [baseline, latest]
     runs-on: ${{ matrix.os }}
     env:
       MUJOCO_GL: disable
@@ -42,8 +43,13 @@ jobs:
         run: |
           uv venv --python 3.13 .venv
           source .venv/bin/activate
+          if [[ '${{ matrix.runtime }}' == 'baseline' ]]; then
+            uv pip install 'mujoco==3.17.0'
+          fi
           uv pip install typed-mujoco/dist/*.whl
-          uv pip install --upgrade --default-index https://pypi.org/simple mujoco
+          if [[ '${{ matrix.runtime }}' == 'latest' ]]; then
+            uv pip install --upgrade --default-index https://pypi.org/simple mujoco
+          fi
           uv pip install --group typed-mujoco/pyproject.toml:typing
           python -I typed-mujoco/tests/check.py
           uv pip uninstall typed-mujoco

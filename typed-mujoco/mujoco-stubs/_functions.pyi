@@ -48,6 +48,7 @@ __all__: list[str] = [
   'mj_defaultSolRefImp',
   'mj_defaultVisual',
   'mj_differentiatePos',
+  'mj_embedAssets',
   'mj_energyPos',
   'mj_energyVel',
   'mj_extractState',
@@ -94,6 +95,7 @@ __all__: list[str] = [
   'mj_kinematics',
   'mj_loadAllPluginLibraries',
   'mj_loadPluginLibrary',
+  'mj_loadTexture',
   'mj_local2Global',
   'mj_makeConstraint',
   'mj_makeM',
@@ -513,6 +515,7 @@ def mj_differentiatePos(
   Compute velocity by finite-differencing two positions.
   """
 
+def mj_embedAssets(m: mujoco._structs.MjModel) -> mujoco._structs.MjModel: ...
 def mj_energyPos(m: mujoco._structs.MjModel, d: mujoco._structs.MjData) -> None:
   """
   Evaluate position-dependent energy (potential).
@@ -941,6 +944,9 @@ def mj_loadPluginLibrary(path: str) -> None:
   Load a dynamic library. The dynamic library is assumed to register one or more plugins.
   """
 
+def mj_loadTexture(
+  m: mujoco._structs.MjModel, id: typing.SupportsInt | typing.SupportsIndex
+) -> tuple[numpy.typing.NDArray[numpy.uint8], int]: ...
 def mj_local2Global(
   d: mujoco._structs.MjData,
   xpos: numpy.typing.NDArray[numpy.float32]

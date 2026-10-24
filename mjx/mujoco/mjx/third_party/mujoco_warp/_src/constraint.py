@@ -25,7 +25,7 @@ from mujoco.mjx.third_party.mujoco_warp._src.types import ContactType
 from mujoco.mjx.third_party.mujoco_warp._src.types import DisableBit
 from mujoco.mjx.third_party.mujoco_warp._src.types import vec5
 from mujoco.mjx.third_party.mujoco_warp._src.types import vec6
-from mujoco.mjx.third_party.mujoco_warp._src.types import vec11
+from mujoco.mjx.third_party.mujoco_warp._src.types import vec12
 from mujoco.mjx.third_party.mujoco_warp._src.warp_util import cache_kernel
 from mujoco.mjx.third_party.mujoco_warp._src.warp_util import event_scope
 
@@ -250,7 +250,7 @@ def _equality_connect(is_sparse: bool, newton: bool, is_discrete: bool = False):
     eq_objtype: wp.array[int],
     eq_solref: wp.array2d[wp.vec2],
     eq_solimp: wp.array2d[vec5],
-    eq_data: wp.array2d[vec11],
+    eq_data: wp.array2d[vec12],
     body_isdofancestor: wp.array2d[int],
     eq_connect_adr: wp.array[int],
     # Data in:
@@ -584,7 +584,7 @@ def _equality_joint(is_sparse: bool, newton: bool, is_discrete: bool = False):
     eq_obj2id: wp.array[int],
     eq_solref: wp.array2d[wp.vec2],
     eq_solimp: wp.array2d[vec5],
-    eq_data: wp.array2d[vec11],
+    eq_data: wp.array2d[vec12],
     eq_jnt_adr: wp.array[int],
     # Data in:
     qpos_in: wp.array2d[float],
@@ -724,7 +724,7 @@ def _equality_tendon(is_sparse: bool, newton: bool, is_discrete: bool = False):
     eq_obj2id: wp.array[int],
     eq_solref: wp.array2d[wp.vec2],
     eq_solimp: wp.array2d[vec5],
-    eq_data: wp.array2d[vec11],
+    eq_data: wp.array2d[vec12],
     ten_J_rownnz: wp.array[int],
     ten_J_rowadr: wp.array[int],
     ten_J_colind: wp.array[int],
@@ -1071,7 +1071,7 @@ def _equality_weld(is_sparse: bool, newton: bool, is_discrete: bool = False):
     eq_objtype: wp.array[int],
     eq_solref: wp.array2d[wp.vec2],
     eq_solimp: wp.array2d[vec5],
-    eq_data: wp.array2d[vec11],
+    eq_data: wp.array2d[vec12],
     body_isdofancestor: wp.array2d[int],
     eq_wld_adr: wp.array[int],
     # Data in:
@@ -1548,7 +1548,7 @@ def _equality_flexstrain(is_sparse: bool, newton: bool, is_discrete: bool = Fals
     eq_obj1id: wp.array[int],
     eq_solref: wp.array2d[wp.vec2],
     eq_solimp: wp.array2d[vec5],
-    eq_data: wp.array2d[vec11],
+    eq_data: wp.array2d[vec12],
     body_isdofancestor: wp.array2d[int],
     eq_flexstrain_adr: wp.array[int],
     flexstrain_J_rownnz: wp.array[int],
@@ -2800,18 +2800,14 @@ def _efc_contact_init_flex(cone_type: types.ConeType, is_sparse: bool, newton: b
                 edata_adr = flex_elemdataadr[f] + e * (dim_f + 1)
                 vert_adr_f = flex_vertadr[f]
                 contact_pos = pos_in[conid]
-                total_inv_dist = float(0.0)
+                w_elem = support.flex_elem_weights(
+                  flex_dim, flex_vertadr, flex_elemdataadr, flex_elem, flexvert_xpos_in, f, e, contact_pos, worldid
+                )
                 blended_coord = wp.vec3(0.0, 0.0, 0.0)
                 for vi in range(4):
                   if vi <= dim_f:
                     v_idx = flex_elem[edata_adr + vi]
-                    vpos = flexvert_xpos_in[worldid, vert_adr_f + v_idx]
-                    dist_v = wp.length(contact_pos - vpos)
-                    w_inv = 1.0 / wp.max(1.0e-10, dist_v)
-                    total_inv_dist += w_inv
-                    blended_coord += flex_vert0[vert_adr_f + v_idx] * w_inv
-                if total_inv_dist > 1.0e-10:
-                  blended_coord = blended_coord / total_inv_dist
+                    blended_coord += flex_vert0[vert_adr_f + v_idx] * w_elem[vi]
                 cn = flex_cellnum[f]
                 cx = cn[0]
                 cy = cn[1]
@@ -3220,18 +3216,14 @@ def _efc_contact_jac_sparse_flex(cone_type: types.ConeType):
               dim_f = flex_dim[f]
               edata_adr = flex_elemdataadr[f] + e * (dim_f + 1)
               vert_adr_f = flex_vertadr[f]
-              total_inv_dist = float(0.0)
+              w_elem = support.flex_elem_weights(
+                flex_dim, flex_vertadr, flex_elemdataadr, flex_elem, flexvert_xpos_in, f, e, con_pos, worldid
+              )
               blended_coord = wp.vec3(0.0, 0.0, 0.0)
               for vi in range(4):
                 if vi <= dim_f:
                   v_idx = flex_elem[edata_adr + vi]
-                  vpos = flexvert_xpos_in[worldid, vert_adr_f + v_idx]
-                  dist_v = wp.length(con_pos - vpos)
-                  w_inv = 1.0 / wp.max(1.0e-10, dist_v)
-                  total_inv_dist += w_inv
-                  blended_coord += flex_vert0[vert_adr_f + v_idx] * w_inv
-              if total_inv_dist > 1.0e-10:
-                blended_coord = blended_coord / total_inv_dist
+                  blended_coord += flex_vert0[vert_adr_f + v_idx] * w_elem[vi]
               cn = flex_cellnum[f]
               cx = cn[0]
               cy = cn[1]
@@ -4325,18 +4317,14 @@ def _efc_contact_update_flex(cone_type: types.ConeType, flg_adhesion: bool = Fal
           dim_f = flex_dim[f1]
           edata_adr = flex_elemdataadr[f1] + e * (dim_f + 1)
           vert_adr_f = flex_vertadr[f1]
-          total_inv_dist = float(0.0)
+          w_elem = support.flex_elem_weights(
+            flex_dim, flex_vertadr, flex_elemdataadr, flex_elem, flexvert_xpos_in, f1, e, con_pos, worldid
+          )
           blended_coord = wp.vec3(0.0, 0.0, 0.0)
           for vi in range(4):
             if vi <= dim_f:
               v_idx = flex_elem[edata_adr + vi]
-              vpos = flexvert_xpos_in[worldid, vert_adr_f + v_idx]
-              dist_v = wp.length(con_pos - vpos)
-              w_inv = 1.0 / wp.max(1.0e-10, dist_v)
-              total_inv_dist += w_inv
-              blended_coord += flex_vert0[vert_adr_f + v_idx] * w_inv
-          if total_inv_dist > 1.0e-10:
-            blended_coord = blended_coord / total_inv_dist
+              blended_coord += flex_vert0[vert_adr_f + v_idx] * w_elem[vi]
           cn = flex_cellnum[f1]
           cx = cn[0]
           cy = cn[1]
@@ -4457,18 +4445,14 @@ def _efc_contact_update_flex(cone_type: types.ConeType, flg_adhesion: bool = Fal
           dim_f = flex_dim[f2]
           edata_adr = flex_elemdataadr[f2] + e * (dim_f + 1)
           vert_adr_f = flex_vertadr[f2]
-          total_inv_dist = float(0.0)
+          w_elem = support.flex_elem_weights(
+            flex_dim, flex_vertadr, flex_elemdataadr, flex_elem, flexvert_xpos_in, f2, e, con_pos, worldid
+          )
           blended_coord = wp.vec3(0.0, 0.0, 0.0)
           for vi in range(4):
             if vi <= dim_f:
               v_idx = flex_elem[edata_adr + vi]
-              vpos = flexvert_xpos_in[worldid, vert_adr_f + v_idx]
-              dist_v = wp.length(con_pos - vpos)
-              w_inv = 1.0 / wp.max(1.0e-10, dist_v)
-              total_inv_dist += w_inv
-              blended_coord += flex_vert0[vert_adr_f + v_idx] * w_inv
-          if total_inv_dist > 1.0e-10:
-            blended_coord = blended_coord / total_inv_dist
+              blended_coord += flex_vert0[vert_adr_f + v_idx] * w_elem[vi]
           cn = flex_cellnum[f2]
           cx = cn[0]
           cy = cn[1]

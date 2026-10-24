@@ -22,6 +22,7 @@ __all__: list[str] = [
   'mjrPixelFormat',
   'mjrVertexAttributeType',
   'mjrVertexAttributeUsage',
+  'mjtActuator',
   'mjtAlignFree',
   'mjtBias',
   'mjtBuiltin',
@@ -43,9 +44,11 @@ __all__: list[str] = [
   'mjtDepthMap',
   'mjtDisableBit',
   'mjtDyn',
+  'mjtEmbed',
   'mjtEnableBit',
   'mjtEq',
   'mjtEvent',
+  'mjtFlexSection',
   'mjtFlexSelf',
   'mjtFont',
   'mjtFontScale',
@@ -72,6 +75,7 @@ __all__: list[str] = [
   'mjtMouse',
   'mjtObj',
   'mjtOrientation',
+  'mjtPassthrough',
   'mjtPertBit',
   'mjtPluginCapabilityBit',
   'mjtProjection',
@@ -79,6 +83,7 @@ __all__: list[str] = [
   'mjtRndFlag',
   'mjtSDFType',
   'mjtSameFrame',
+  'mjtScaling',
   'mjtSection',
   'mjtSensor',
   'mjtSleepPolicy',
@@ -3403,12 +3408,15 @@ class mjtCtrlInput:
     mjINPUT_VOLTAGE
 
     mjINPUT_NONE
+
+    mjINPUT_PRESSURE
   """
 
   __members__: typing.ClassVar[dict[str, mjtCtrlInput]]
   mjINPUT_FF: typing.ClassVar[mjtCtrlInput]
   mjINPUT_NONE: typing.ClassVar[mjtCtrlInput]
   mjINPUT_POS: typing.ClassVar[mjtCtrlInput]
+  mjINPUT_PRESSURE: typing.ClassVar[mjtCtrlInput]
   mjINPUT_VEL: typing.ClassVar[mjtCtrlInput]
   mjINPUT_VOLTAGE: typing.ClassVar[mjtCtrlInput]
   @typing.overload
@@ -4369,13 +4377,19 @@ class mjtConDataField:
 
     mjCONDATA_TANGENT
 
+    mjCONDATA_LINVEL
+
+    mjCONDATA_ANGVEL
+
     mjNCONDATA
   """
 
   __members__: typing.ClassVar[dict[str, mjtConDataField]]
+  mjCONDATA_ANGVEL: typing.ClassVar[mjtConDataField]
   mjCONDATA_DIST: typing.ClassVar[mjtConDataField]
   mjCONDATA_FORCE: typing.ClassVar[mjtConDataField]
   mjCONDATA_FOUND: typing.ClassVar[mjtConDataField]
+  mjCONDATA_LINVEL: typing.ClassVar[mjtConDataField]
   mjCONDATA_NORMAL: typing.ClassVar[mjtConDataField]
   mjCONDATA_POS: typing.ClassVar[mjtConDataField]
   mjCONDATA_TANGENT: typing.ClassVar[mjtConDataField]
@@ -7193,14 +7207,32 @@ class mjtMeshBuiltin:
     mjMESH_BUILTIN_WEDGE
 
     mjMESH_BUILTIN_PLATE
+
+    mjMESH_BUILTIN_GRID
+
+    mjMESH_BUILTIN_BOX
+
+    mjMESH_BUILTIN_CYLINDER
+
+    mjMESH_BUILTIN_ELLIPSOID
+
+    mjMESH_BUILTIN_SQUARE
+
+    mjMESH_BUILTIN_DISC
   """
 
   __members__: typing.ClassVar[dict[str, mjtMeshBuiltin]]
+  mjMESH_BUILTIN_BOX: typing.ClassVar[mjtMeshBuiltin]
   mjMESH_BUILTIN_CONE: typing.ClassVar[mjtMeshBuiltin]
+  mjMESH_BUILTIN_CYLINDER: typing.ClassVar[mjtMeshBuiltin]
+  mjMESH_BUILTIN_DISC: typing.ClassVar[mjtMeshBuiltin]
+  mjMESH_BUILTIN_ELLIPSOID: typing.ClassVar[mjtMeshBuiltin]
+  mjMESH_BUILTIN_GRID: typing.ClassVar[mjtMeshBuiltin]
   mjMESH_BUILTIN_HEMISPHERE: typing.ClassVar[mjtMeshBuiltin]
   mjMESH_BUILTIN_NONE: typing.ClassVar[mjtMeshBuiltin]
   mjMESH_BUILTIN_PLATE: typing.ClassVar[mjtMeshBuiltin]
   mjMESH_BUILTIN_SPHERE: typing.ClassVar[mjtMeshBuiltin]
+  mjMESH_BUILTIN_SQUARE: typing.ClassVar[mjtMeshBuiltin]
   mjMESH_BUILTIN_SUPERSPHERE: typing.ClassVar[mjtMeshBuiltin]
   mjMESH_BUILTIN_SUPERTORUS: typing.ClassVar[mjtMeshBuiltin]
   mjMESH_BUILTIN_WEDGE: typing.ClassVar[mjtMeshBuiltin]
@@ -12261,6 +12293,754 @@ class mjtSection:
   ) -> float: ...
   @typing.overload
   def __ne__(self, other: mjtSection) -> bool: ...
+  @typing.overload
+  def __ne__(
+    self, other: typing.SupportsInt | typing.SupportsIndex
+  ) -> bool: ...
+  @typing.overload
+  def __ne__(self, other: object) -> bool: ...
+  def __neg__(self) -> int: ...
+  def __or__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @typing.overload
+  def __radd__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __radd__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __rand__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __rfloordiv__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __rfloordiv__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  @typing.overload
+  def __rmod__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __rmod__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  @typing.overload
+  def __rmul__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __rmul__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __ror__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  def __rshift__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __rsub__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __rsub__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __rtruediv__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __rxor__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  def __setstate__(
+    self, state: typing.SupportsInt | typing.SupportsIndex
+  ) -> None: ...
+  @typing.overload
+  def __sub__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @typing.overload
+  def __sub__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __truediv__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __xor__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @property
+  def name(self) -> str: ...
+  @property
+  def value(self) -> int: ...
+
+class mjtActuator:
+  """
+  Members:
+
+    mjACTUATOR_GENERAL
+
+    mjACTUATOR_MOTOR
+
+    mjACTUATOR_POSITION
+
+    mjACTUATOR_VELOCITY
+
+    mjACTUATOR_INTVELOCITY
+
+    mjACTUATOR_DAMPER
+
+    mjACTUATOR_CYLINDER
+
+    mjACTUATOR_MUSCLE
+
+    mjACTUATOR_ADHESION
+
+    mjACTUATOR_PID
+
+    mjACTUATOR_ORIENTATION
+
+    mjACTUATOR_DCMOTOR
+  """
+
+  __members__: typing.ClassVar[dict[str, mjtActuator]]
+  mjACTUATOR_ADHESION: typing.ClassVar[mjtActuator]
+  mjACTUATOR_CYLINDER: typing.ClassVar[mjtActuator]
+  mjACTUATOR_DAMPER: typing.ClassVar[mjtActuator]
+  mjACTUATOR_DCMOTOR: typing.ClassVar[mjtActuator]
+  mjACTUATOR_GENERAL: typing.ClassVar[mjtActuator]
+  mjACTUATOR_INTVELOCITY: typing.ClassVar[mjtActuator]
+  mjACTUATOR_MOTOR: typing.ClassVar[mjtActuator]
+  mjACTUATOR_MUSCLE: typing.ClassVar[mjtActuator]
+  mjACTUATOR_ORIENTATION: typing.ClassVar[mjtActuator]
+  mjACTUATOR_PID: typing.ClassVar[mjtActuator]
+  mjACTUATOR_POSITION: typing.ClassVar[mjtActuator]
+  mjACTUATOR_VELOCITY: typing.ClassVar[mjtActuator]
+  @typing.overload
+  def __add__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @typing.overload
+  def __add__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __and__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @typing.overload
+  def __eq__(self, other: mjtActuator) -> bool: ...
+  @typing.overload
+  def __eq__(
+    self, other: typing.SupportsInt | typing.SupportsIndex
+  ) -> bool: ...
+  @typing.overload
+  def __eq__(self, other: object) -> bool: ...
+  @typing.overload
+  def __floordiv__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __floordiv__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __getstate__(self) -> int: ...
+  def __hash__(self) -> int: ...
+  def __index__(self) -> int: ...
+  @typing.overload
+  def __init__(
+    self, value: typing.SupportsInt | typing.SupportsIndex
+  ) -> None: ...
+  @typing.overload
+  def __init__(
+    self, value: typing.SupportsInt | typing.SupportsIndex
+  ) -> None: ...
+  def __int__(self) -> int: ...
+  def __lshift__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __mod__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @typing.overload
+  def __mod__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  @typing.overload
+  def __mul__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @typing.overload
+  def __mul__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  @typing.overload
+  def __ne__(self, other: mjtActuator) -> bool: ...
+  @typing.overload
+  def __ne__(
+    self, other: typing.SupportsInt | typing.SupportsIndex
+  ) -> bool: ...
+  @typing.overload
+  def __ne__(self, other: object) -> bool: ...
+  def __neg__(self) -> int: ...
+  def __or__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @typing.overload
+  def __radd__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __radd__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __rand__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __rfloordiv__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __rfloordiv__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  @typing.overload
+  def __rmod__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __rmod__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  @typing.overload
+  def __rmul__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __rmul__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __ror__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  def __rshift__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __rsub__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __rsub__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __rtruediv__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __rxor__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  def __setstate__(
+    self, state: typing.SupportsInt | typing.SupportsIndex
+  ) -> None: ...
+  @typing.overload
+  def __sub__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @typing.overload
+  def __sub__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __truediv__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __xor__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @property
+  def name(self) -> str: ...
+  @property
+  def value(self) -> int: ...
+
+class mjtEmbed:
+  """
+  Members:
+
+    mjEMBED_FALSE
+
+    mjEMBED_TRUE
+
+    mjEMBED_AUTO
+  """
+
+  __members__: typing.ClassVar[dict[str, mjtEmbed]]
+  mjEMBED_AUTO: typing.ClassVar[mjtEmbed]
+  mjEMBED_FALSE: typing.ClassVar[mjtEmbed]
+  mjEMBED_TRUE: typing.ClassVar[mjtEmbed]
+  @typing.overload
+  def __add__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @typing.overload
+  def __add__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __and__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @typing.overload
+  def __eq__(self, other: mjtEmbed) -> bool: ...
+  @typing.overload
+  def __eq__(
+    self, other: typing.SupportsInt | typing.SupportsIndex
+  ) -> bool: ...
+  @typing.overload
+  def __eq__(self, other: object) -> bool: ...
+  @typing.overload
+  def __floordiv__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __floordiv__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __getstate__(self) -> int: ...
+  def __hash__(self) -> int: ...
+  def __index__(self) -> int: ...
+  @typing.overload
+  def __init__(
+    self, value: typing.SupportsInt | typing.SupportsIndex
+  ) -> None: ...
+  @typing.overload
+  def __init__(
+    self, value: typing.SupportsInt | typing.SupportsIndex
+  ) -> None: ...
+  def __int__(self) -> int: ...
+  def __lshift__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __mod__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @typing.overload
+  def __mod__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  @typing.overload
+  def __mul__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @typing.overload
+  def __mul__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  @typing.overload
+  def __ne__(self, other: mjtEmbed) -> bool: ...
+  @typing.overload
+  def __ne__(
+    self, other: typing.SupportsInt | typing.SupportsIndex
+  ) -> bool: ...
+  @typing.overload
+  def __ne__(self, other: object) -> bool: ...
+  def __neg__(self) -> int: ...
+  def __or__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @typing.overload
+  def __radd__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __radd__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __rand__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __rfloordiv__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __rfloordiv__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  @typing.overload
+  def __rmod__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __rmod__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  @typing.overload
+  def __rmul__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __rmul__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __ror__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  def __rshift__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __rsub__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __rsub__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __rtruediv__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __rxor__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  def __setstate__(
+    self, state: typing.SupportsInt | typing.SupportsIndex
+  ) -> None: ...
+  @typing.overload
+  def __sub__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @typing.overload
+  def __sub__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __truediv__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __xor__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @property
+  def name(self) -> str: ...
+  @property
+  def value(self) -> int: ...
+
+class mjtFlexSection:
+  """
+  Members:
+
+    mjFLEXSECTION_CIRCLE
+
+    mjFLEXSECTION_BOX
+  """
+
+  __members__: typing.ClassVar[dict[str, mjtFlexSection]]
+  mjFLEXSECTION_BOX: typing.ClassVar[mjtFlexSection]
+  mjFLEXSECTION_CIRCLE: typing.ClassVar[mjtFlexSection]
+  @typing.overload
+  def __add__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @typing.overload
+  def __add__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __and__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @typing.overload
+  def __eq__(self, other: mjtFlexSection) -> bool: ...
+  @typing.overload
+  def __eq__(
+    self, other: typing.SupportsInt | typing.SupportsIndex
+  ) -> bool: ...
+  @typing.overload
+  def __eq__(self, other: object) -> bool: ...
+  @typing.overload
+  def __floordiv__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __floordiv__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __getstate__(self) -> int: ...
+  def __hash__(self) -> int: ...
+  def __index__(self) -> int: ...
+  @typing.overload
+  def __init__(
+    self, value: typing.SupportsInt | typing.SupportsIndex
+  ) -> None: ...
+  @typing.overload
+  def __init__(
+    self, value: typing.SupportsInt | typing.SupportsIndex
+  ) -> None: ...
+  def __int__(self) -> int: ...
+  def __lshift__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __mod__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @typing.overload
+  def __mod__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  @typing.overload
+  def __mul__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @typing.overload
+  def __mul__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  @typing.overload
+  def __ne__(self, other: mjtFlexSection) -> bool: ...
+  @typing.overload
+  def __ne__(
+    self, other: typing.SupportsInt | typing.SupportsIndex
+  ) -> bool: ...
+  @typing.overload
+  def __ne__(self, other: object) -> bool: ...
+  def __neg__(self) -> int: ...
+  def __or__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @typing.overload
+  def __radd__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __radd__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __rand__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __rfloordiv__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __rfloordiv__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  @typing.overload
+  def __rmod__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __rmod__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  @typing.overload
+  def __rmul__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __rmul__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __ror__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  def __rshift__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __rsub__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __rsub__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __rtruediv__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __rxor__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  def __setstate__(
+    self, state: typing.SupportsInt | typing.SupportsIndex
+  ) -> None: ...
+  @typing.overload
+  def __sub__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @typing.overload
+  def __sub__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __truediv__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __xor__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @property
+  def name(self) -> str: ...
+  @property
+  def value(self) -> int: ...
+
+class mjtPassthrough:
+  """
+  Members:
+
+    mjPASSTHROUGH_NONE
+
+    mjPASSTHROUGH_TEXTURES
+  """
+
+  __members__: typing.ClassVar[dict[str, mjtPassthrough]]
+  mjPASSTHROUGH_NONE: typing.ClassVar[mjtPassthrough]
+  mjPASSTHROUGH_TEXTURES: typing.ClassVar[mjtPassthrough]
+  @typing.overload
+  def __add__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @typing.overload
+  def __add__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __and__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @typing.overload
+  def __eq__(self, other: mjtPassthrough) -> bool: ...
+  @typing.overload
+  def __eq__(
+    self, other: typing.SupportsInt | typing.SupportsIndex
+  ) -> bool: ...
+  @typing.overload
+  def __eq__(self, other: object) -> bool: ...
+  @typing.overload
+  def __floordiv__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __floordiv__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __getstate__(self) -> int: ...
+  def __hash__(self) -> int: ...
+  def __index__(self) -> int: ...
+  @typing.overload
+  def __init__(
+    self, value: typing.SupportsInt | typing.SupportsIndex
+  ) -> None: ...
+  @typing.overload
+  def __init__(
+    self, value: typing.SupportsInt | typing.SupportsIndex
+  ) -> None: ...
+  def __int__(self) -> int: ...
+  def __lshift__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __mod__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @typing.overload
+  def __mod__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  @typing.overload
+  def __mul__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @typing.overload
+  def __mul__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  @typing.overload
+  def __ne__(self, other: mjtPassthrough) -> bool: ...
+  @typing.overload
+  def __ne__(
+    self, other: typing.SupportsInt | typing.SupportsIndex
+  ) -> bool: ...
+  @typing.overload
+  def __ne__(self, other: object) -> bool: ...
+  def __neg__(self) -> int: ...
+  def __or__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @typing.overload
+  def __radd__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __radd__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __rand__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __rfloordiv__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __rfloordiv__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  @typing.overload
+  def __rmod__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __rmod__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  @typing.overload
+  def __rmul__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __rmul__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __ror__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  def __rshift__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __rsub__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __rsub__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __rtruediv__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __rxor__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  def __setstate__(
+    self, state: typing.SupportsInt | typing.SupportsIndex
+  ) -> None: ...
+  @typing.overload
+  def __sub__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @typing.overload
+  def __sub__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __truediv__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __xor__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @property
+  def name(self) -> str: ...
+  @property
+  def value(self) -> int: ...
+
+class mjtScaling:
+  """
+  Members:
+
+    mjSCALING_SIMILAR
+
+    mjSCALING_GEOMETRY
+  """
+
+  __members__: typing.ClassVar[dict[str, mjtScaling]]
+  mjSCALING_GEOMETRY: typing.ClassVar[mjtScaling]
+  mjSCALING_SIMILAR: typing.ClassVar[mjtScaling]
+  @typing.overload
+  def __add__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @typing.overload
+  def __add__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __and__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @typing.overload
+  def __eq__(self, other: mjtScaling) -> bool: ...
+  @typing.overload
+  def __eq__(
+    self, other: typing.SupportsInt | typing.SupportsIndex
+  ) -> bool: ...
+  @typing.overload
+  def __eq__(self, other: object) -> bool: ...
+  @typing.overload
+  def __floordiv__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __floordiv__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __getstate__(self) -> int: ...
+  def __hash__(self) -> int: ...
+  def __index__(self) -> int: ...
+  @typing.overload
+  def __init__(
+    self, value: typing.SupportsInt | typing.SupportsIndex
+  ) -> None: ...
+  @typing.overload
+  def __init__(
+    self, value: typing.SupportsInt | typing.SupportsIndex
+  ) -> None: ...
+  def __int__(self) -> int: ...
+  def __lshift__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __mod__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @typing.overload
+  def __mod__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  @typing.overload
+  def __mul__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @typing.overload
+  def __mul__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  @typing.overload
+  def __ne__(self, other: mjtScaling) -> bool: ...
   @typing.overload
   def __ne__(
     self, other: typing.SupportsInt | typing.SupportsIndex

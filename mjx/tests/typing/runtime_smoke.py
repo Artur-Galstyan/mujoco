@@ -1,6 +1,7 @@
 """CPU smoke for an installed MJX distribution and its PyTree metadata."""
 
 import dataclasses
+import tomllib
 from importlib import metadata, resources
 from pathlib import Path
 from typing import get_args
@@ -19,7 +20,9 @@ assert (
   Path(mjx.__file__).resolve()
   == Path(distribution.locate_file('mujoco/mjx/__init__.py')).resolve()
 )
-assert distribution.version == '3.15.1'
+with (Path(__file__).resolve().parents[2] / 'pyproject.toml').open('rb') as f:
+  expected_version = tomllib.load(f)['project']['version']
+assert distribution.version == expected_version
 
 host = mujoco.MjModel.from_xml_string(
   '<mujoco><worldbody><body><joint type="hinge"/>'
