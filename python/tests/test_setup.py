@@ -39,7 +39,7 @@ CORE = (
   '_specs',
   '_structs',
 )
-PLUGINS = ('actuator', 'elasticity', 'sensor', 'sdf_plugin')
+PLUGINS = ('actuator', 'sensor', 'sdf_plugin')
 
 
 class RepositoryInstallTest(unittest.TestCase):
@@ -304,7 +304,7 @@ class SourceBuildTest(unittest.TestCase):
         }
         for name in expected:
           (lib / name).touch()
-        (lib / 'libelasticity.a').touch()
+        (lib / 'libsensor.a').touch()
         with (
           mock.patch.dict(os.environ, {}, clear=True),
           mock.patch.object(
@@ -345,9 +345,9 @@ class SourceBuildTest(unittest.TestCase):
 
   def test_runtime_plugins_are_copied_into_wheel(self):
     for system, name in (
-      ('Darwin', 'libelasticity.dylib'),
-      ('Linux', 'libelasticity.so'),
-      ('Windows', 'elasticity.dll'),
+      ('Darwin', 'libsensor.dylib'),
+      ('Linux', 'libsensor.so'),
+      ('Windows', 'sensor.dll'),
     ):
       with self.subTest(system=system):
         plugins = self.tmp / 'plugins' / system

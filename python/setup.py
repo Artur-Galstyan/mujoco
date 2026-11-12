@@ -288,7 +288,6 @@ class BuildCMakeExtension(build_ext.build_ext):
         '--target',
         'mujoco',
         'actuator',
-        'elasticity',
         'sensor',
         'sdf_plugin',
         *self._build_parallel_args(),
@@ -320,7 +319,7 @@ class BuildCMakeExtension(build_ext.build_ext):
     )
     plugin_dir = os.path.join(self._sdk_root, 'mujoco_plugin')
     os.makedirs(plugin_dir, exist_ok=True)
-    for plugin in ('actuator', 'elasticity', 'sensor', 'sdf_plugin'):
+    for plugin in ('actuator', 'sensor', 'sdf_plugin'):
       filename = ('' if system == 'Windows' else 'lib') + plugin + suffix
       src = os.path.join(lib_dir, filename)
       if not os.path.isfile(src):
