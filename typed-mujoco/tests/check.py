@@ -66,9 +66,15 @@ STUBS = (
 
 
 def upstream_files() -> set[str]:
-  # MuJoCo 4 splits the wheel into mujoco, mujoco-core and mujoco-studio.
+  # MuJoCo 4 splits the Python package into several distributions.
   files = set()
-  for name in ('mujoco', 'mujoco-core', 'mujoco-studio'):
+  for name in (
+    'mujoco',
+    'mujoco-core',
+    'mujoco-studio',
+    'mujoco-usd',
+    'mujoco-mjx',
+  ):
     try:
       dist = importlib.metadata.distribution(name)
     except importlib.metadata.PackageNotFoundError:
@@ -313,6 +319,8 @@ def check_python_signatures(package: Path, optional: set[str]) -> None:
 
 def is_test_module(rel: str) -> bool:
   name = rel.rsplit('/', 1)[-1]
+  if name in {'test_util.py', 'test_utils.py'}:
+    return False  # helper modules that public modules import
   return (
     name.endswith('_test.py')
     or name.startswith('test_')

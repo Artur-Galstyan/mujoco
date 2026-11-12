@@ -42,11 +42,11 @@ jobs:
           uv venv --python 3.13 .venv
           source .venv/bin/activate
           if [[ '${{ matrix.runtime }}' == 'baseline' ]]; then
-            uv pip install 'mujoco[sysid,usd]==4.0.1'
+            uv pip install 'mujoco[sysid,usd]==4.0.1' 'mujoco-mjx[warp]==4.0.1'
           fi
           uv pip install typed-mujoco/dist/*.whl
           if [[ '${{ matrix.runtime }}' == 'latest' ]]; then
-            uv pip install --upgrade --default-index https://pypi.org/simple 'mujoco[sysid,usd]'
+            uv pip install --upgrade --default-index https://pypi.org/simple 'mujoco[sysid,usd]' 'mujoco-mjx[warp]'
           fi
           uv pip install --group typed-mujoco/pyproject.toml:typing
           python -I typed-mujoco/tests/check.py
