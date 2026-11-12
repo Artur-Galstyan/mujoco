@@ -83,7 +83,7 @@ jobs:
         MUJOCO_GL: disable
       run: |
         source .venv/bin/activate
-        uv pip install --group python/pyproject.toml:typing setuptools
+        uv pip install --group python/pyproject.toml:typing setuptools absl-py 'etils[epath]'
         test -f python/tests/test_setup.py
         python -m unittest discover -s python/tests -p 'test_setup.py'
         python -m ruff check --config python/pyproject.toml python/tests/test_setup.py setup.py

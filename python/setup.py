@@ -321,7 +321,9 @@ class BuildCMakeExtension(build_ext.build_ext):
     os.makedirs(plugin_dir, exist_ok=True)
     for plugin in ('actuator', 'sensor', 'sdf_plugin'):
       filename = ('' if system == 'Windows' else 'lib') + plugin + suffix
-      src = os.path.join(lib_dir, filename)
+      src = os.path.join(lib_dir, 'mujoco_plugin', filename)
+      if not os.path.isfile(src):
+        src = os.path.join(lib_dir, filename)
       if not os.path.isfile(src):
         raise RuntimeError(f'Native MuJoCo plugin not built: {src}')
       shutil.copyfile(src, os.path.join(plugin_dir, filename))

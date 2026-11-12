@@ -289,8 +289,8 @@ class SourceBuildTest(unittest.TestCase):
   def test_native_build_installs_core_and_runtime_plugins(self):
     self.command._repo_root = str(self.tmp / 'checkout')
     for system, suffix, folder in (
-      ('Darwin', '.dylib', 'lib'),
-      ('Linux', '.so', 'lib'),
+      ('Darwin', '.dylib', 'lib/mujoco_plugin'),
+      ('Linux', '.so', 'lib/mujoco_plugin'),
       ('Windows', '.dll', 'bin/Release'),
     ):
       with self.subTest(system=system):
