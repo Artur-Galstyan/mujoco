@@ -43,6 +43,8 @@ OPTIONAL_NATIVE = (
   'studio/web/state_payload',
   'studio/dear_imgui/dear_imgui',
   'studio/implot/implot',
+  'usd/layer_sink',
+  'usd/writer',
 )
 STUBS = (
   '__init__.pyi',
@@ -97,7 +99,9 @@ def installed_stubs() -> Path:
   owned = {p.as_posix() for p in companion.files}
   stub_files = {p for p in owned if p.startswith('mujoco-stubs/')}
   expected = {'mujoco-stubs/py.typed', *(f'mujoco-stubs/{p}' for p in STUBS)}
-  assert len(STUBS) == 33 and stub_files == expected, (
+  runtime_root = Path(str(upstream.locate_file('mujoco')))
+  expected |= {f'mujoco-stubs/{rel}i' for rel in python_modules(runtime_root)}
+  assert len(STUBS) == 35 and stub_files == expected, (
     f'missing: {sorted(expected - stub_files)}; extra: {sorted(stub_files - expected)}'
   )
   assert not (owned & files), 'Overlapping distribution records'
@@ -307,6 +311,136 @@ def check_python_signatures(package: Path, optional: set[str]) -> None:
       )
 
 
+def is_test_module(rel: str) -> bool:
+  name = rel.rsplit('/', 1)[-1]
+  return (
+    name.endswith('_test.py')
+    or name.startswith('test_')
+    or name == 'conftest.py'
+    or '/tests/' in f'/{rel}'
+  )
+
+
+def python_modules(runtime: Path) -> list[str]:
+  """Upstream non-test Python modules, as paths relative to the package."""
+  return sorted(
+    rel
+    for path in runtime.rglob('*.py')
+    if not is_test_module(rel := path.relative_to(runtime).as_posix())
+  )
+
+
+def signature_shape(
+  node: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> list[tuple[str, str, bool]]:
+  args = node.args
+  positional = [*args.posonlyargs, *args.args]
+  shape = [
+    (
+      arg.arg,
+      'posonly' if i < len(args.posonlyargs) else 'positional',
+      i < len(positional) - len(args.defaults),
+    )
+    for i, arg in enumerate(positional)
+  ]
+  if args.vararg:
+    shape.append((args.vararg.arg, 'vararg', True))
+  shape.extend(
+    (arg.arg, 'kwonly', default is None)
+    for arg, default in zip(args.kwonlyargs, args.kw_defaults)
+  )
+  if args.kwarg:
+    shape.append((args.kwarg.arg, 'kwarg', True))
+  return shape
+
+
+def decorators(node: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
+  return {
+    d.attr if isinstance(d, ast.Attribute) else getattr(d, 'id', '')
+    for d in (
+      d.func if isinstance(d, ast.Call) else d for d in node.decorator_list
+    )
+  }
+
+
+def compare_body(
+  label: str, source: list[ast.stmt], stub: list[ast.stmt], out: list[str]
+) -> None:
+  """Compares public names and signature shapes of a source and a stub body."""
+  functions = (ast.FunctionDef, ast.AsyncFunctionDef)
+  missing = declared(source) - declared(stub)
+  if missing:
+    out.append(f'{label}: missing {sorted(missing)}')
+  stub_defs: dict[str, list[ast.stmt]] = {}
+  for node in stub:
+    if isinstance(node, (ast.ClassDef, *functions)):
+      stub_defs.setdefault(node.name, []).append(node)
+  for node in source:
+    if not isinstance(node, (ast.ClassDef, *functions)):
+      continue
+    if node.name.startswith('_') and node.name != '__init__':
+      continue
+    found = stub_defs.get(node.name, [])
+    if isinstance(node, ast.ClassDef):
+      classes = [n for n in found if isinstance(n, ast.ClassDef)]
+      if classes:
+        compare_body(f'{label}.{node.name}', node.body, classes[0].body, out)
+      elif found:
+        out.append(f'{label}.{node.name}: class stubbed as a function')
+      continue
+    defs = [n for n in found if isinstance(n, functions)]
+    if len(defs) != 1 or decorators(defs[0]) & {'overload', 'setter'}:
+      continue
+    if decorators(node) & {'setter', 'deleter', 'overload'}:
+      continue
+    if isinstance(node, ast.AsyncFunctionDef) != isinstance(
+      defs[0], ast.AsyncFunctionDef
+    ):
+      out.append(f'{label}.{node.name}: async mismatch')
+    expected, actual = signature_shape(node), signature_shape(defs[0])
+    if expected != actual:
+      out.append(
+        f'{label}.{node.name}: stub {actual}, runtime source {expected}'
+      )
+
+
+def python_module_diffs(package: Path, runtime: Path) -> list[str]:
+  """Checks that each upstream Python module has a stub with the same API."""
+  out: list[str] = []
+  for rel in python_modules(runtime):
+    stub = package / f'{rel}i'
+    if not stub.is_file():
+      out.append(f'{rel}: no stub')
+      continue
+    source = ast.parse((runtime / rel).read_text())
+    tree = ast.parse(stub.read_text())
+    compare_body(rel, source.body, tree.body, out)
+    stub_names = declared(tree.body) | {
+      alias.asname or alias.name.split('.')[0]
+      for node in tree.body
+      if isinstance(node, (ast.Import, ast.ImportFrom))
+      for alias in node.names
+    }
+    star = any(
+      alias.name == '*'
+      for node in tree.body
+      if isinstance(node, ast.ImportFrom)
+      for alias in node.names
+    )
+    reexports = {
+      alias.asname or alias.name
+      for node in source.body
+      if isinstance(node, ast.ImportFrom)
+      and rel.endswith('__init__.py')
+      and (node.level or (node.module or '').startswith('mujoco'))
+      for alias in node.names
+      if not (alias.asname or alias.name).startswith('_') and alias.name != '*'
+    }
+    if not star and reexports - stub_names:
+      out.append(f'{rel}: missing reexports {sorted(reexports - stub_names)}')
+  return out
+
+
 def run(
   args: list[str], cwd: Path, env: dict[str, str], status: int = 0
 ) -> str:
@@ -499,12 +633,7 @@ def check_typing(cwd: Path, package: Path) -> None:
     'concise',
     '--error-on-warning',
   ]
-  consumers = (
-    'consumer.py',
-    'filament_consumer.py',
-    'studio_consumer.py',
-    'batch_consumer.py',
-  )
+  consumers = sorted(p.name for p in Path(__file__).parent.glob('*consumer.py'))
   for name in consumers:
     source = Path(__file__).with_name(name)
     assert source.is_file(), f'Missing static consumer: {source}'
@@ -537,36 +666,9 @@ def check_typing(cwd: Path, package: Path) -> None:
   run([*cmd, str(Path(__file__))], cwd, env)
   for name in consumers:
     run([*cmd, str(cwd / name)], cwd, env)
-  run([*cmd, *(str(package / stub) for stub in STUBS)], cwd, env)
+  run([*cmd, *(str(p) for p in sorted(package.rglob('*.pyi')))], cwd, env)
   check_docs(package, cwd, env, cmd, ruff)
 
-  upstream = importlib.metadata.distribution('mujoco')
-  minimize = Path(str(upstream.locate_file('mujoco/minimize.py'))).resolve()
-  files = upstream_files()
-  assert 'mujoco/minimize.py' in files
-  assert 'mujoco/minimize.pyi' not in files
-  assert minimize.is_file() and not (package / 'minimize.pyi').exists()
-  origin = run(
-    [
-      sys.executable,
-      '-I',
-      '-c',
-      'import mujoco.minimize as m; assert m.Status.MAX_ITER in m.Status; print(m.__file__)',
-    ],
-    cwd,
-    env,
-  ).strip()
-  assert Path(origin).resolve() == minimize
-  fallback = cwd / 'fallback.py'
-  fallback.write_text('import mujoco.minimize as minimize\n')
-  output = run([*cmd, str(fallback)], cwd, env, status=1)
-  found = re.findall(r'(?m)^.*?:(\d+):\d+: (error|warning)\[([^]]+)\]', output)
-  assert found == [('1', 'error', 'unresolved-import')], output
-  assert 'Cannot resolve imported module `mujoco.minimize`' in output
-  fallback.unlink()
-  print(
-    'Known limitation: ty 0.0.85 cannot resolve upstream-only modules; MJX fallback is not covered'
-  )
   negatives = {
     'bad_step': ("mujoco.mj_step(model, 'not data')", 'invalid-argument-type'),
     'bad_nstep': (
@@ -649,10 +751,18 @@ def check_typing(cwd: Path, package: Path) -> None:
     source.unlink()
 
 
+def mujoco_file() -> str:
+  import mujoco
+
+  return mujoco.__file__
+
+
 def main() -> None:
   package = installed_stubs()
   optional = check_native_api(package)
   check_python_signatures(package, optional)
+  diffs = python_module_diffs(package, Path(mujoco_file()).parent)
+  assert not diffs, 'Python module stubs differ:\n' + '\n'.join(diffs)
   smoke()
   with tempfile.TemporaryDirectory() as directory:
     check_typing(Path(directory), package)
