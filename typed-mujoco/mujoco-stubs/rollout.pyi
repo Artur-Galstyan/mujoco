@@ -102,7 +102,9 @@ class Rollout:
     Returns post-step `(state, sensordata)` with shapes
     `(nbatch, nstep, nstate)` and
     `(nbatch, nstep, model.nsensordata)`. Allocates missing outputs using
-    `mujoco.MJTNUM_DTYPE`; provided arrays must have those shapes.
+    `mujoco.MJTNUM_DTYPE`; provided arrays must have those shapes. `nstep`
+    must be a non-negative int and `chunk_size` a positive int (not a bool),
+    else ValueError is raised.
     """
   @overload
   def rollout(

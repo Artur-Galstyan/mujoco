@@ -12,16 +12,11 @@ from typing_extensions import Never, assert_type
 
 import mujoco
 from mujoco import mjrf
-from mujoco.experimental.dear_imgui import dear_imgui as imgui
-from mujoco.experimental.implot import implot
-from mujoco.experimental.studio import (
-  native_viewer_cc,
-  sim,
-  ux,
-  window,
-)
-from mujoco.experimental.studio.web import headless_ui, state_payload
 from mujoco.rendering.filament import renderer
+from mujoco.studio import _studio, native_viewer_cc, sim, ux, window
+from mujoco.studio.dear_imgui import dear_imgui as imgui
+from mujoco.studio.implot import implot
+from mujoco.studio.web import headless_ui, state_payload
 
 
 def studio_native(model: mujoco.MjModel, data: mujoco.MjData) -> None:
@@ -49,6 +44,12 @@ def studio_native(model: mujoco.MjModel, data: mujoco.MjData) -> None:
   assert_type(ux.load_theme(def_theme=ux.GuiTheme.DARK), ux.GuiTheme)
   assert_type(ux.theme_menu_gui(ux.GuiTheme.LIGHT), tuple[bool, ux.GuiTheme])
   assert_type(ux.set_camera(model, camera, -1), int)
+  assert_type(_studio.ux.set_camera(model, camera, -1), int)
+  assert_type(_studio.sim.StepStatus.OK, sim.StepStatus)
+  assert_type(ux.MIN_FLY_SPEED, float)
+  assert_type(ux.move_camera_with_keys(model, camera, 1.0), tuple[bool, float])
+  assert_type(ux.move_camera_with_mouse(model, camera, True), bool)
+  assert_type(ux.unwind_imgui_frame(), bool)
   ux.MoveCamera(model, data, camera, ux.CameraMotion.ORBIT, 0.1, 0.2)
   pick = ux.Pick(model, data, camera, 0.5, 0.5, 1.0, vis_options)
   assert_type(pick, ux.PickResult)
@@ -67,6 +68,7 @@ def studio_native(model: mujoco.MjModel, data: mujoco.MjData) -> None:
   history = sim.SimHistory()
   history.init(3, max_history=16)
   assert_type(history.size(), int)
+  assert_type(history.capacity(), int)
   ux.reset_history(history, state, model, data)
   assert_type(ux.get_console_lines(), list[str])
   assert_type(ux.get_console_counts().errors, int)
@@ -83,6 +85,9 @@ def studio_native(model: mujoco.MjModel, data: mujoco.MjData) -> None:
     lambda: None,
   )
   assert_type(ux.info_gui(model, data, True, 60.0, gpu_ms=1.0), None)
+  assert_type(
+    ux.view_gizmo_gui(model, data, camera, state, (0.0, 0.0, 1.0, 1.0)), bool
+  )
 
   ctx = mjrf.Context(mjrf.ContextConfig())
   render = renderer.Renderer(ctx)
@@ -113,10 +118,18 @@ def studio_native(model: mujoco.MjModel, data: mujoco.MjData) -> None:
   assert_type(window.GetImGuiContext(), int)
   assert_type(window.GetImPlotContext(), int)
 
-  web = headless_ui.HeadlessUi('Studio')
+  web = headless_ui.HeadlessUi('Studio', assets_dir='assets')
   assert_type(web.new_frame(), bool)
   assert_type(web.get_context(), int)
   assert_type(web.upload_image(0, b'\x00' * 4, 1, 1, 4), int)
+  assert_type(web.start_session(b'hello'), bytes)
+  assert_type(web.push_input(b'input'), bool)
+  assert_type(web.take_messages(), list[bytes])
+  assert_type(web.last_frame_index(), int)
+  assert_type(web.end_session(), None)
+  viewer_input = state_payload.ViewerInputState(mouse_focus=True)
+  viewer_input.camera_index = 1
+  assert_type(viewer_input.keyboard_focus, int)
   assert_type(
     state_payload.serialize_state_payload(
       0,
@@ -128,9 +141,19 @@ def studio_native(model: mujoco.MjModel, data: mujoco.MjData) -> None:
       model,
       np.zeros(11, dtype=np.uint8),
       (geom,),
+      viewer_input,
     ),
     bytes,
   )
+  bundle = state_payload.serialize_model_bundle(model)
+  assert_type(
+    state_payload.parse_model_bundle(bundle)[1], list[tuple[str, bytes]]
+  )
+  message = state_payload.parse_client_camera(
+    state_payload.serialize_client_camera(camera, 1)
+  )
+  if message is not None:
+    assert_type(message.lookat, tuple[float, float, float])
   assert_type(state_payload.max_state_payload_size(8), int)
   assert_type(state_payload.MAX_EXTRA_GEOMS, int)
 
@@ -151,6 +174,16 @@ def studio_ui() -> None:
   assert_type(imgui.StyleColorsDark(style), None)
   assert_type(imgui.StyleColorsLight(), None)
   assert_type(imgui.StyleColorsClassic(), None)
+  assert_type(imgui.CreateContext(), int)
+  assert_type(imgui.NewFrame(), None)
+  draw_list = imgui.GetWindowDrawList()
+  assert_type(draw_list, imgui.DrawList)
+  assert_type(
+    draw_list.AddRect(point, point, 0, flags=imgui.DrawFlags.Closed.value), None
+  )
+  assert_type(imgui.BackendFlags.RendererHasTextures.value, int)
+  imgui.GetIO().DisplaySize = point
+  assert_type(imgui.DestroyContext(), None)
   assert_type(imgui.Begin('Options', True), tuple[bool, bool])
   assert_type(imgui.Key.F6.value, int)
   assert_type(imgui.Key(imgui.Key.F6.value).name, str)
@@ -173,6 +206,8 @@ def studio_ui() -> None:
     imgui.ColorEdit4('Tint', [0.0, 0.0, 0.0, 1.0]), tuple[bool, list[float]]
   )
   assert_type(imgui.ListClipper().Step(), bool)
+  assert_type(implot.CreateContext(), int)
+  assert_type(implot.DestroyContext(), None)
   assert_type(implot.Flags.NoInputs.value, int)
   assert_type(implot.Flags(implot.Flags.NoInputs.value).name, str)
   assert_type(implot.Flags.__members__['None'], implot.Flags)

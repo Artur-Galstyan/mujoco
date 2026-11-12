@@ -7,7 +7,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-from collections.abc import Sequence
+from collections.abc import Iterable
 
 from mujoco import (
   MjData,
@@ -39,7 +39,7 @@ class ModelScene:
     perturb: MjvPerturb,
     camera: MjvCamera,
     vis_options: MjvOption,
-    extra_geoms: Sequence[MjvGeom],
+    extra_geoms: Iterable[MjvGeom],
   ) -> None: ...
   def get_headlight_intensity(self) -> float: ...
 

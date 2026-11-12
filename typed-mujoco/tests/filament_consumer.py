@@ -127,6 +127,28 @@ def check_filament_types(
   assert_type(request.headlight_intensity, float)
   assert_type(ctx.render([request], [read]), int)
   assert_type(ctx.get_frame_stats(0, mjrf.FrameStats()), None)
+  assert_type(ctx.flush(), None)
+  assert_type(ctx.get_renderer_info(mujoco.MjrRendererInfo()), None)
+  request.skybox = False
+  assert_type(request.haze, bool)
+  renderable.set_cast_shadow(False)
+
+  render_opts = mjrf.RenderOpts(
+    bloom=mjrf.BloomOpts(enable=True, quality=mjrf.Quality.QUALITY_HIGH),
+    color_grading=mjrf.ColorGradingOpts(
+      tone_mapper=mjrf.ToneMapper.TONE_MAPPER_ACES, exposure=1.0
+    ),
+    shadow=mjrf.ShadowOpts(type=mjrf.ShadowType.SHADOW_TYPE_SOFT),
+    post_processing=True,
+  )
+  render_opts.fog.enable = True
+  render_opts.haze = mjrf.HazeOpts(color=[0.5, 0.5, 0.5, 1.0])
+  assert_type(render_opts.bloom, mjrf.BloomOpts)
+  assert_type(render_opts.fog.color, npt.NDArray[np.float32])
+  assert_type(render_opts.antialiasing.msaa_samples, int)
+  assert_type(render_opts.dithering.type, mjrf.DitheringType)
+  assert_type(render_opts.ambient_occlusion.type, mjrf.AmbientOcclusionType)
+  assert_type(mjrf.model_render_opts(render_opts, model), None)
 
   resources = mjrf.ModelResources(ctx, model)
   renderables = mjrf.ModelRenderables(scene, resources)
@@ -153,7 +175,9 @@ def check_filament_types(
   assert_type(wrapper.context, mjrf.Context)
   assert_type(wrapper.scene('scene'), mjrf.Scene)
   assert_type(wrapper.target('rgb', pixels), mjrf.RenderTarget)
-  view = renderer.View(scene='scene', target='rgb', camera=gl_camera)
+  view = renderer.View(
+    scene='scene', target='rgb', camera=gl_camera, skybox=False, haze=False
+  )
   assert_type(view.headlight_color, tuple[float, float, float])
   view.camera = cam
   assert_type(wrapper.render([view]), None)

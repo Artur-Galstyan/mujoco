@@ -15,9 +15,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from pathlib import Path
-
 import tomllib
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 NATIVE = (
@@ -35,14 +34,15 @@ NATIVE = (
 )
 OPTIONAL_NATIVE = (
   '_render_filament',
-  'experimental/studio/native_viewer_cc',
-  'experimental/studio/ux',
-  'experimental/studio/sim',
-  'experimental/studio/window',
-  'experimental/studio/web/headless_ui',
-  'experimental/studio/web/state_payload',
-  'experimental/dear_imgui/dear_imgui',
-  'experimental/implot/implot',
+  'studio/_studio',
+  'studio/native_viewer_cc',
+  'studio/ux',
+  'studio/sim',
+  'studio/window',
+  'studio/web/headless_ui',
+  'studio/web/state_payload',
+  'studio/dear_imgui/dear_imgui',
+  'studio/implot/implot',
 )
 STUBS = (
   '__init__.pyi',
@@ -59,15 +59,20 @@ STUBS = (
   'rendering/filament/__init__.pyi',
   'rendering/filament/renderer.pyi',
   'rendering/filament/model_scene.pyi',
-  'experimental/studio/native_viewer_cc.pyi',
-  'experimental/studio/ux.pyi',
-  'experimental/studio/sim.pyi',
-  'experimental/studio/window.pyi',
-  'experimental/studio/web/headless_ui.pyi',
-  'experimental/studio/web/state_payload.pyi',
-  'experimental/dear_imgui/dear_imgui.pyi',
-  'experimental/implot/implot.pyi',
+  *(f'{name}.pyi' for name in OPTIONAL_NATIVE[1:]),
 )
+
+
+def upstream_files() -> set[str]:
+  # MuJoCo 4 splits the wheel into mujoco, mujoco-core and mujoco-studio.
+  files = set()
+  for name in ('mujoco', 'mujoco-core', 'mujoco-studio'):
+    try:
+      dist = importlib.metadata.distribution(name)
+    except importlib.metadata.PackageNotFoundError:
+      continue
+    files.update(p.as_posix() for p in dist.files or ())
+  return files
 
 
 def installed_stubs() -> Path:
@@ -79,7 +84,7 @@ def installed_stubs() -> Path:
     'project'
   ]
   version = project['version']
-  assert version.startswith('3.17.0.'), version
+  assert version.startswith('4.0.1.'), version
   assert companion.version == version, companion.version
   assert companion.metadata['Requires-Python'] == project['requires-python']
   dependency = f'mujoco>={version.rsplit(".", 1)[0]}'
@@ -87,20 +92,20 @@ def installed_stubs() -> Path:
   assert any(
     req.replace(' ', '') == dependency for req in companion.requires or []
   ), f'Companion must require {dependency}'
-  assert upstream.files is not None and companion.files is not None
-  upstream_files = {p.as_posix() for p in upstream.files}
+  assert companion.files is not None
+  files = upstream_files()
   owned = {p.as_posix() for p in companion.files}
   stub_files = {p for p in owned if p.startswith('mujoco-stubs/')}
   expected = {'mujoco-stubs/py.typed', *(f'mujoco-stubs/{p}' for p in STUBS)}
-  assert len(STUBS) == 32 and stub_files == expected, (
+  assert len(STUBS) == 33 and stub_files == expected, (
     f'missing: {sorted(expected - stub_files)}; extra: {sorted(stub_files - expected)}'
   )
-  assert not (owned & upstream_files), 'Overlapping distribution records'
+  assert not (owned & files), 'Overlapping distribution records'
   other_files = owned - stub_files
   assert all(
     p.startswith(f'typed_mujoco-{version}.dist-info/') for p in other_files
   ), f'Companion contains non-stub files: {sorted(other_files)}'
-  assert 'mujoco/__init__.py' in upstream_files
+  assert 'mujoco/__init__.py' in files
   package = Path(str(companion.locate_file('mujoco-stubs'))).resolve()
   runtime = Path(str(upstream.locate_file('mujoco/__init__.py'))).resolve()
   assert package.is_dir() and runtime.is_file()
@@ -173,19 +178,13 @@ def check_class(label: str, node: ast.ClassDef, runtime: type) -> None:
 def check_native_api(package: Path) -> set[str]:
   import mujoco
 
-  upstream = importlib.metadata.distribution('mujoco')
-  assert upstream.files is not None
-  upstream_files = {p.as_posix() for p in upstream.files}
   available_optional = set()
   native_exports = set()
   for name in (*NATIVE, *OPTIONAL_NATIVE):
     if name in OPTIONAL_NATIVE:
-      prefix = f'mujoco/{name}.'
-      if not any(
-        path.startswith(prefix)
-        and path.endswith(tuple(importlib.machinery.EXTENSION_SUFFIXES))
-        for path in upstream_files
-      ):
+      try:
+        importlib.import_module(f'mujoco.{name.replace("/", ".")}')
+      except ImportError:
         print(
           f'Optional native module absent from wheel: mujoco.{name.replace("/", ".")} (stub checked statically later)'
         )
@@ -543,10 +542,9 @@ def check_typing(cwd: Path, package: Path) -> None:
 
   upstream = importlib.metadata.distribution('mujoco')
   minimize = Path(str(upstream.locate_file('mujoco/minimize.py'))).resolve()
-  assert upstream.files is not None
-  upstream_files = {p.as_posix() for p in upstream.files}
-  assert 'mujoco/minimize.py' in upstream_files
-  assert 'mujoco/minimize.pyi' not in upstream_files
+  files = upstream_files()
+  assert 'mujoco/minimize.py' in files
+  assert 'mujoco/minimize.pyi' not in files
   assert minimize.is_file() and not (package / 'minimize.pyi').exists()
   origin = run(
     [
@@ -635,7 +633,7 @@ def check_typing(cwd: Path, package: Path) -> None:
   prefix = (
     'import numpy as np\nimport mujoco\n'
     'from mujoco import batch, mjrf\n'
-    'from mujoco.experimental.studio import ux\n'
+    'from mujoco.studio import ux\n'
     'model = mujoco.MjModel.from_xml_string("<mujoco/>")\n'
     'data = mujoco.MjData(model)\nspec = mujoco.MjSpec()\n'
   )

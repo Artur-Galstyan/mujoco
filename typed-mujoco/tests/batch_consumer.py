@@ -1,4 +1,4 @@
-"""Type-check the official 3.17 batch modules; do not run this consumer."""
+"""Type-check the official 4.0 batch modules; do not run this consumer."""
 
 from typing import TypeAlias
 
@@ -45,6 +45,9 @@ def check_batch_types(model: mujoco.MjModel, data: mujoco.MjData) -> None:
   assert_type(sims.bind('plugin_data'), npt.NDArray[np.uint64])
   assert_type(sims.plugin_data, npt.NDArray[np.uint64])
   assert_type(sims.qpos, _NumArray)
+  assert_type(sims.plastic, _NumArray)
+  assert_type(sims.xiquat, _NumArray)
+  assert_type(sims.bind('geom_xquat'), _NumArray)
   sims.ctrl = np.zeros((2, model.nu))
   assert_type(sims.expand('body_mass'), _NumArray)
   assert_type(sims.expand('body_parentid'), npt.NDArray[np.int32])
@@ -52,6 +55,11 @@ def check_batch_types(model: mujoco.MjModel, data: mujoco.MjData) -> None:
   assert_type(sims.expand('geom_rgba'), npt.NDArray[np.float32])
   assert_type(sims.expand('plugin_attr'), npt.NDArray[np.int8])
   assert_type(sims.expand('actuator_actearly'), npt.NDArray[np.bool_])
+  assert_type(sims.expand('geom_castshadow'), npt.NDArray[np.bool_])
+  assert_type(sims.expand('site_rgba'), npt.NDArray[np.float32])
+  assert_type(sims.expand('geom_sameframe'), npt.NDArray[np.uint8])
+  assert_type(sims.expanded('body_mass'), _FieldArray | None)
+  assert_type(sims.models, None | mujoco.MjModel | tuple[mujoco.MjModel, ...])
   assert_type(sims.joint('j').id, int)
   assert_type(sims.joint('j').name, str)
   assert_type(sims.joint('j').qpos, _NumArray)
@@ -64,6 +72,10 @@ def check_batch_types(model: mujoco.MjModel, data: mujoco.MjData) -> None:
   assert_type(sims.camera(0).xmat, _NumArray)
   assert_type(sims.equality(0).data, _NumArray)
   assert_type(sims.geom('g').xpos, _NumArray)
+  assert_type(sims.geom('g').xquat, _NumArray)
+  assert_type(sims.geom('g').castshadow, npt.NDArray[np.bool_])
+  assert_type(sims.joint('j').springyield, _NumArray)
+  sims.geom('g').contype = 1
   assert_type(sims.joint('j').range, _NumArray)
   assert_type(sims.keyframe(0).time, _NumArray)
   assert_type(sims.light(0).ambient, npt.NDArray[np.float32])

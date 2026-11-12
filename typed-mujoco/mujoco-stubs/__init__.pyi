@@ -155,6 +155,7 @@ from mujoco._enums import mjtSolver as mjtSolver
 from mujoco._enums import mjtStage as mjtStage
 from mujoco._enums import mjtState as mjtState
 from mujoco._enums import mjtStereo as mjtStereo
+from mujoco._enums import mjtTendon as mjtTendon
 from mujoco._enums import mjtTexture as mjtTexture
 from mujoco._enums import mjtTextureRole as mjtTextureRole
 from mujoco._enums import mjtTimer as mjtTimer

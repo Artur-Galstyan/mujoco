@@ -96,15 +96,12 @@ class Renderer:
     modes; RGB is the default. Rendering after `close` raises RuntimeError.
     """
   @overload
-  def render(
-    self, *, out: npt.NDArray[_ScalarT]
-  ) -> npt.NDArray[_ScalarT] | npt.NDArray[np.int32]:
-    """Write RGB or depth pixels to `out` and return it.
+  def render(self, *, out: npt.NDArray[_ScalarT]) -> npt.NDArray[_ScalarT]:
+    """Write the pixels to `out` and return `out`.
 
-    Use a uint8 buffer of shape `(height, width, 3)` for RGB or segmentation,
-    or float32 of shape `(height, width)` for depth. Segmentation uses `out`
-    as a temporary RGB buffer and returns a separate int32 array of shape
-    `(height, width, 2)`.
+    `out` must have shape `(height, width, 3)` for RGB, `(height, width)` for
+    depth, or `(height, width, 2)` for segmentation. Its dtype is cast if
+    necessary; a wrong shape raises ValueError.
     """
   def update_scene(
     self,

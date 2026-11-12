@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-# Modified for typed-mujoco 3.17.0 compatibility.
+# Modified for typed-mujoco 4.0.1 compatibility.
 """Class for coordinating the rendering of scenes to render targets."""
 
 from typing import Any, Protocol, TypeAlias
@@ -41,6 +41,8 @@ class View:
     post_processing: bool = True,
     reflections: bool = True,
     shadows: bool = True,
+    skybox: bool = True,
+    haze: bool = True,
     headlight: bool = False,
     headlight_color: tuple[float, float, float] = (1.0, 1.0, 1.0),
     headlight_intensity: float = 0.0,
@@ -53,6 +55,8 @@ class View:
   post_processing: bool
   reflections: bool
   shadows: bool
+  skybox: bool
+  haze: bool
   headlight: bool
   headlight_color: tuple[float, float, float]
   headlight_intensity: float

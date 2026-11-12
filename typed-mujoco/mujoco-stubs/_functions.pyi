@@ -491,8 +491,12 @@ def mj_defaultOption(opt: mujoco._structs.MjOption) -> None:
   """
 
 def mj_defaultSolRefImp(
-  solref: typing.SupportsFloat | typing.SupportsIndex,
-  solimp: typing.SupportsFloat | typing.SupportsIndex,
+  solref: numpy.typing.NDArray[numpy.float32]
+  | numpy.typing.NDArray[numpy.float64]
+  | None,
+  solimp: numpy.typing.NDArray[numpy.float32]
+  | numpy.typing.NDArray[numpy.float64]
+  | None,
 ) -> None:
   """
   Set solver parameters to default values.
@@ -936,7 +940,7 @@ def mj_kinematics(
 
 def mj_loadAllPluginLibraries(directory: str) -> None:
   """
-  Scan a directory and load all dynamic libraries. Dynamic libraries in the specified directory are assumed to register one or more plugins. Optionally, if a callback is specified, it is called for each dynamic library encountered that registers plugins.
+  Scan a directory and load all dynamic libraries. Dynamic libraries in the specified directory are assumed to register one or more plugins. Optionally, if a callback is specified, it is called for each dynamic library encountered that registers plugins. A library that fails to load is skipped with a warning.
   """
 
 def mj_loadPluginLibrary(path: str) -> None:
@@ -2320,13 +2324,14 @@ def mju_rayGeom(
 def mju_raySkin(
   nface: typing.SupportsInt | typing.SupportsIndex,
   nvert: typing.SupportsInt | typing.SupportsIndex,
-  face: typing.SupportsInt | typing.SupportsIndex,
-  vert: typing.SupportsFloat | typing.SupportsIndex,
+  face: numpy.typing.ArrayLike,
+  vert: numpy.typing.ArrayLike,
   pnt: numpy.typing.ArrayLike,
   vec: numpy.typing.ArrayLike,
   vertid: typing.Annotated[
     numpy.typing.NDArray[numpy.int32], '[1, 1]', 'flags.writeable'
-  ],
+  ]
+  | None,
 ) -> float:
   """
   Intersect ray with skin; return nearest distance or -1 if no intersection, and also output nearest vertex id.

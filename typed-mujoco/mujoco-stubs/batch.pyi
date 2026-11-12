@@ -68,18 +68,18 @@ _FloatDataName: TypeAlias = Literal[
   'flexedge_velocity',
   'flexelem_aabb',
   'flexelem_krot',
-  'flexvert_J',
   'flexvert_hessian',
   'flexvert_lambda',
-  'flexvert_length',
   'flexvert_xpos',
   'geom_xmat',
   'geom_xpos',
+  'geom_xquat',
   'history',
   'light_xdir',
   'light_xpos',
   'mocap_pos',
   'mocap_quat',
+  'plastic',
   'plugin_state',
   'qDeriv',
   'qH',
@@ -107,6 +107,7 @@ _FloatDataName: TypeAlias = Literal[
   'sensordata',
   'site_xmat',
   'site_xpos',
+  'site_xquat',
   'solver_fwdinv',
   'subtree_angmom',
   'subtree_com',
@@ -122,6 +123,7 @@ _FloatDataName: TypeAlias = Literal[
   'xfrc_applied',
   'ximat',
   'xipos',
+  'xiquat',
   'xmat',
   'xpos',
   'xquat',
@@ -188,16 +190,19 @@ class _Writable(Generic[_T]):
 class _Actuator(_Named):
   acc0: _Writable[_NumArray]
   actadr: Final[_IntArray]
+  actlimited: _Writable[npt.NDArray[np.bool_]]
   actnum: Final[_IntArray]
   actrange: _Writable[_NumArray]
   biasprm: _Writable[_NumArray]
   biastype: Final[_IntArray]
   cranklength: _Writable[_NumArray]
   ctrl: _Writable[_NumArray]
+  ctrllimited: _Writable[npt.NDArray[np.bool_]]
   ctrlrange: _Writable[_NumArray]
   dynprm: _Writable[_NumArray]
   dyntype: Final[_IntArray]
   force: Final[_NumArray]
+  forcelimited: _Writable[npt.NDArray[np.bool_]]
   forcerange: _Writable[_NumArray]
   gainprm: _Writable[_NumArray]
   gaintype: Final[_IntArray]
@@ -245,6 +250,7 @@ class _Body(_Named):
   xfrc_applied: _Writable[_NumArray]
   ximat: Final[_NumArray]
   xipos: Final[_NumArray]
+  xiquat: Final[_NumArray]
   xmat: Final[_NumArray]
   xpos: Final[_NumArray]
   xquat: Final[_NumArray]
@@ -265,6 +271,7 @@ class _Camera(_Named):
   xpos: Final[_NumArray]
 
 class _Equality(_Named):
+  active0: _Writable[npt.NDArray[np.bool_]]
   data: _Writable[_NumArray]
   obj1id: Final[_IntArray]
   obj2id: Final[_IntArray]
@@ -274,9 +281,10 @@ class _Equality(_Named):
 
 class _Geom(_Named):
   bodyid: Final[_IntArray]
+  castshadow: _Writable[npt.NDArray[np.bool_]]
   conaffinity: _Writable[_IntArray]
   condim: _Writable[_IntArray]
-  contype: Final[_IntArray]
+  contype: _Writable[_IntArray]
   dataid: Final[_IntArray]
   friction: _Writable[_NumArray]
   gap: _Writable[_NumArray]
@@ -297,6 +305,7 @@ class _Geom(_Named):
   user: _Writable[_NumArray]
   xmat: Final[_NumArray]
   xpos: Final[_NumArray]
+  xquat: Final[_NumArray]
 
 class _Joint(_Named):
   M0: _Writable[_NumArray]
@@ -313,8 +322,11 @@ class _Joint(_Named):
   group: _Writable[_IntArray]
   invweight0: _Writable[_NumArray]
   jntid: Final[_IntArray]
+  limited: _Writable[npt.NDArray[np.bool_]]
   margin: _Writable[_NumArray]
   parentid: Final[_IntArray]
+  plastic: _Writable[_NumArray]
+  plasticadr: Final[_IntArray]
   pos: _Writable[_NumArray]
   qLDiagInv: Final[_NumArray]
   qacc: Final[_NumArray]
@@ -336,6 +348,7 @@ class _Joint(_Named):
   simplenum: Final[_IntArray]
   solimp: _Writable[_NumArray]
   solref: _Writable[_NumArray]
+  springyield: _Writable[_NumArray]
   stiffness: _Writable[_NumArray]
   stiffnesspoly: _Writable[_NumArray]
   type: Final[_IntArray]
@@ -348,14 +361,17 @@ class _Keyframe(_Named):
   ctrl: _Writable[_NumArray]
   mpos: _Writable[_NumArray]
   mquat: _Writable[_NumArray]
+  plastic: _Writable[_NumArray]
   qpos: _Writable[_NumArray]
   qvel: _Writable[_NumArray]
   time: _Writable[_NumArray]
 
 class _Light(_Named):
+  active: _Writable[npt.NDArray[np.bool_]]
   ambient: _Writable[_Float32Array]
   attenuation: _Writable[_Float32Array]
   bodyid: Final[_IntArray]
+  castshadow: _Writable[npt.NDArray[np.bool_]]
   cutoff: _Writable[_Float32Array]
   diffuse: _Writable[_Float32Array]
   dir: _Writable[_NumArray]
@@ -379,6 +395,7 @@ class _Material(_Named):
   specular: _Writable[_Float32Array]
   texid: Final[_IntArray]
   texrepeat: _Writable[_Float32Array]
+  texuniform: _Writable[npt.NDArray[np.bool_]]
 
 class _Numeric(_Named):
   adr: Final[_IntArray]
@@ -424,12 +441,16 @@ class _Site(_Named):
   user: _Writable[_NumArray]
   xmat: Final[_NumArray]
   xpos: Final[_NumArray]
+  xquat: Final[_NumArray]
 
 class _Tendon(_Named):
   J_colind: _Writable[_IntArray]
   J_rowadr: Final[_IntArray]
   J_rownnz: _Writable[_IntArray]
   length: Final[_NumArray]
+  plastic: _Writable[_NumArray]
+  plasticadr: Final[_IntArray]
+  springyield: _Writable[_NumArray]
   velocity: Final[_NumArray]
   wrapadr: Final[_IntArray]
   wrapnum: Final[_IntArray]
@@ -441,6 +462,7 @@ class _Tendon(_Named):
   _invweight0: Final[_NumArray]
   _length0: Final[_NumArray]
   _lengthspring: Final[_NumArray]
+  _limited: Final[npt.NDArray[np.bool_]]
   _margin: Final[_NumArray]
   _matid: Final[_IntArray]
   _num: Final[_IntArray]
@@ -452,6 +474,7 @@ class _Tendon(_Named):
   _solref_lim: Final[_NumArray]
   _stiffness: Final[_NumArray]
   _stiffnesspoly: Final[_NumArray]
+  _type: Final[_IntArray]
   _user: Final[_NumArray]
   _width: Final[_NumArray]
 
@@ -527,19 +550,74 @@ class Batch:
     self, name: Literal['body_mass', 'geom_size', 'opt.gravity']
   ) -> _NumArray: ...
   @overload
-  def expand(self, name: Literal['geom_rgba']) -> npt.NDArray[np.float32]: ...
+  def expand(
+    self,
+    name: Literal[
+      'cam_intrinsic',
+      'cam_sensorsize',
+      'flex_rgba',
+      'flex_texcoord',
+      'geom_rgba',
+      'light_ambient',
+      'light_attenuation',
+      'light_bulbradius',
+      'light_cutoff',
+      'light_diffuse',
+      'light_exponent',
+      'light_intensity',
+      'light_range',
+      'light_softness',
+      'light_specular',
+      'mat_emission',
+      'mat_metallic',
+      'mat_reflectance',
+      'mat_rgba',
+      'mat_roughness',
+      'mat_shininess',
+      'mat_specular',
+      'mat_texrepeat',
+      'site_rgba',
+      'tendon_rgba',
+    ],
+  ) -> npt.NDArray[np.float32]: ...
   @overload
-  def expand(self, name: Literal['body_simple']) -> npt.NDArray[np.uint8]: ...
+  def expand(
+    self,
+    name: Literal[
+      'body_sameframe', 'body_simple', 'geom_sameframe', 'site_sameframe'
+    ],
+  ) -> npt.NDArray[np.uint8]: ...
   @overload
   def expand(self, name: Literal['body_parentid']) -> _IntArray: ...
   @overload
   def expand(self, name: Literal['plugin_attr']) -> npt.NDArray[np.int8]: ...
   @overload
   def expand(
-    self, name: Literal['actuator_actearly']
+    self,
+    name: Literal[
+      'actuator_actearly',
+      'actuator_actlimited',
+      'actuator_ctrllimited',
+      'actuator_forcelimited',
+      'eq_active0',
+      'flex_centered',
+      'flex_flatskin',
+      'flex_rigid',
+      'flexedge_rigid',
+      'geom_castshadow',
+      'jnt_actfrclimited',
+      'jnt_actgravcomp',
+      'jnt_limited',
+      'light_active',
+      'light_castshadow',
+      'mat_texuniform',
+      'tendon_actfrclimited',
+      'tendon_limited',
+    ],
   ) -> npt.NDArray[np.bool_]: ...
   @overload
   def expand(self, name: str) -> _FieldArray: ...
+  def expanded(self, name: str) -> _FieldArray | None: ...
   def step(
     self, ids: Ids = None, nstep: int = 1, stage: int | mjtStage = 0
   ) -> None: ...
@@ -552,6 +630,8 @@ class Batch:
   ) -> None: ...
   def get_model(self, sim: int, model: MjModel | None = None) -> MjModel: ...
   def set_models(self, models: MjModel | Sequence[MjModel] | None) -> None: ...
+  @property
+  def models(self) -> None | MjModel | tuple[MjModel, ...]: ...
   def get_data(self, sim: int, data: MjData | None = None) -> MjData: ...
   def set_const(self, ids: Ids = None) -> None: ...
   @overload

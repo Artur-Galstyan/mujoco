@@ -9,8 +9,6 @@ on:
     paths:
       - 'typed-mujoco/**'
       - '.github/workflows/typed-mujoco.yml'
-  schedule:
-    - cron: '17 6 * * *'
   workflow_dispatch:
 
 permissions:
@@ -44,7 +42,7 @@ jobs:
           uv venv --python 3.13 .venv
           source .venv/bin/activate
           if [[ '${{ matrix.runtime }}' == 'baseline' ]]; then
-            uv pip install 'mujoco==3.17.0'
+            uv pip install 'mujoco==4.0.1'
           fi
           uv pip install typed-mujoco/dist/*.whl
           if [[ '${{ matrix.runtime }}' == 'latest' ]]; then

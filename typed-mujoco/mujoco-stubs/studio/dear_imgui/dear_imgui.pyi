@@ -6,7 +6,7 @@
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS.
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from typing import ClassVar, overload
 
 class Vec2:
@@ -44,11 +44,14 @@ class Style:
 
 class IO:
   ConfigFlags: int
+  BackendFlags: int
+  ConfigErrorRecoveryEnableAssert: bool
+  ConfigErrorRecoveryEnableDebugLog: bool
+  ConfigErrorRecoveryEnableTooltip: bool
   WantSaveIniSettings: bool
   @property
   def Fonts(self) -> FontAtlas: ...
-  @property
-  def DisplaySize(self) -> Vec2: ...
+  DisplaySize: Vec2
   @property
   def FontGlobalScale(self) -> float: ...
   @property
@@ -87,8 +90,103 @@ class ListClipper:
   @property
   def DisplayEnd(self) -> int: ...
 
+class DrawFlags:
+  __members__: ClassVar[dict[str, DrawFlags]]
+  Closed: ClassVar[DrawFlags]
+  RoundCornersTopLeft: ClassVar[DrawFlags]
+  RoundCornersTopRight: ClassVar[DrawFlags]
+  RoundCornersBottomLeft: ClassVar[DrawFlags]
+  RoundCornersBottomRight: ClassVar[DrawFlags]
+  RoundCornersNone: ClassVar[DrawFlags]
+  RoundCornersTop: ClassVar[DrawFlags]
+  RoundCornersBottom: ClassVar[DrawFlags]
+  RoundCornersLeft: ClassVar[DrawFlags]
+  RoundCornersRight: ClassVar[DrawFlags]
+  RoundCornersAll: ClassVar[DrawFlags]
+  def __init__(self, value: int) -> None: ...
+  def __int__(self) -> int: ...
+  def __index__(self) -> int: ...
+  @property
+  def name(self) -> str: ...
+  @property
+  def value(self) -> int: ...
+
+class DrawList:
+  def AddLine(
+    self, p1: Vec2, p2: Vec2, col: int, thickness: float = 1.0
+  ) -> None: ...
+  def AddRect(
+    self,
+    p_min: Vec2,
+    p_max: Vec2,
+    col: int,
+    rounding: float = 0.0,
+    thickness: float = 1.0,
+    flags: int = 0,
+  ) -> None: ...
+  def AddRectFilled(
+    self,
+    p_min: Vec2,
+    p_max: Vec2,
+    col: int,
+    rounding: float = 0.0,
+    flags: int = 0,
+  ) -> None: ...
+  def AddTriangle(
+    self, p1: Vec2, p2: Vec2, p3: Vec2, col: int, thickness: float = 1.0
+  ) -> None: ...
+  def AddTriangleFilled(
+    self, p1: Vec2, p2: Vec2, p3: Vec2, col: int
+  ) -> None: ...
+  def AddCircle(
+    self,
+    center: Vec2,
+    radius: float,
+    col: int,
+    num_segments: int = 0,
+    thickness: float = 1.0,
+  ) -> None: ...
+  def AddCircleFilled(
+    self, center: Vec2, radius: float, col: int, num_segments: int = 0
+  ) -> None: ...
+  def AddText(self, pos: Vec2, col: int, text: str) -> None: ...
+  def AddPolyline(
+    self,
+    points: Sequence[Vec2],
+    col: int,
+    thickness: float = 1.0,
+    flags: int = 0,
+  ) -> None: ...
+  def AddConvexPolyFilled(self, points: Sequence[Vec2], col: int) -> None: ...
+  def PathClear(self) -> None: ...
+  def PathLineTo(self, pos: Vec2) -> None: ...
+  def PathArcTo(
+    self,
+    center: Vec2,
+    radius: float,
+    a_min: float,
+    a_max: float,
+    num_segments: int = 0,
+  ) -> None: ...
+  def PathStroke(
+    self, col: int, thickness: float = 1.0, flags: int = 0
+  ) -> None: ...
+  def PathFillConvex(self, col: int) -> None: ...
+
 def GetStyle() -> Style: ...
 def GetIO() -> IO: ...
+def CreateContext() -> int:
+  """Create a context and make it current; return its handle."""
+
+def DestroyContext(ptr: int = 0) -> None:
+  """Destroy the given context; 0 selects the current one."""
+
+def NewFrame() -> None: ...
+def EndFrame() -> None: ...
+def Render() -> None: ...
+def GetBackgroundDrawList() -> DrawList: ...
+def GetForegroundDrawList() -> DrawList: ...
+def GetWindowDrawList() -> DrawList: ...
 def StyleColorsClassic(dst: Style | None = None) -> None: ...
 def StyleColorsDark(dst: Style | None = None) -> None: ...
 def StyleColorsLight(dst: Style | None = None) -> None: ...
@@ -500,6 +598,7 @@ class BackendFlags:
   HasMouseCursors: ClassVar[BackendFlags]
   HasSetMousePos: ClassVar[BackendFlags]
   RendererHasVtxOffset: ClassVar[BackendFlags]
+  RendererHasTextures: ClassVar[BackendFlags]
   PlatformHasViewports: ClassVar[BackendFlags]
   HasMouseHoveredViewport: ClassVar[BackendFlags]
   RendererHasViewports: ClassVar[BackendFlags]

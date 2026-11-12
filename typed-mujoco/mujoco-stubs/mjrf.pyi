@@ -15,7 +15,22 @@
 """Convenience re-export of the native Filament bindings."""
 
 from mujoco._render_filament import (
+  AmbientOcclusionOpts as AmbientOcclusionOpts,
+)
+from mujoco._render_filament import (
+  AmbientOcclusionType as AmbientOcclusionType,
+)
+from mujoco._render_filament import (
+  AntialiasingOpts as AntialiasingOpts,
+)
+from mujoco._render_filament import (
+  BloomOpts as BloomOpts,
+)
+from mujoco._render_filament import (
   Camera as Camera,
+)
+from mujoco._render_filament import (
+  ColorGradingOpts as ColorGradingOpts,
 )
 from mujoco._render_filament import (
   ColorSpace as ColorSpace,
@@ -27,13 +42,31 @@ from mujoco._render_filament import (
   ContextConfig as ContextConfig,
 )
 from mujoco._render_filament import (
+  DepthOfFieldOpts as DepthOfFieldOpts,
+)
+from mujoco._render_filament import (
+  DitheringOpts as DitheringOpts,
+)
+from mujoco._render_filament import (
+  DitheringType as DitheringType,
+)
+from mujoco._render_filament import (
   DrawMode as DrawMode,
+)
+from mujoco._render_filament import (
+  FogOpts as FogOpts,
 )
 from mujoco._render_filament import (
   FrameStats as FrameStats,
 )
 from mujoco._render_filament import (
   GraphicsApi as GraphicsApi,
+)
+from mujoco._render_filament import (
+  HazeOpts as HazeOpts,
+)
+from mujoco._render_filament import (
+  HeadlightOpts as HeadlightOpts,
 )
 from mujoco._render_filament import (
   IndexType as IndexType,
@@ -49,6 +82,9 @@ from mujoco._render_filament import (
 )
 from mujoco._render_filament import (
   Material as Material,
+)
+from mujoco._render_filament import (
+  MaterialOpts as MaterialOpts,
 )
 from mujoco._render_filament import (
   Mesh as Mesh,
@@ -78,16 +114,25 @@ from mujoco._render_filament import (
   PixelFormat as PixelFormat,
 )
 from mujoco._render_filament import (
+  Quality as Quality,
+)
+from mujoco._render_filament import (
   ReadRequest as ReadRequest,
 )
 from mujoco._render_filament import (
   Rect as Rect,
 )
 from mujoco._render_filament import (
+  ReflectionOpts as ReflectionOpts,
+)
+from mujoco._render_filament import (
   Renderable as Renderable,
 )
 from mujoco._render_filament import (
   RenderableParams as RenderableParams,
+)
+from mujoco._render_filament import (
+  RenderOpts as RenderOpts,
 )
 from mujoco._render_filament import (
   RenderRequest as RenderRequest,
@@ -108,6 +153,15 @@ from mujoco._render_filament import (
   SceneParams as SceneParams,
 )
 from mujoco._render_filament import (
+  ShadowOpts as ShadowOpts,
+)
+from mujoco._render_filament import (
+  ShadowType as ShadowType,
+)
+from mujoco._render_filament import (
+  SkyboxOpts as SkyboxOpts,
+)
+from mujoco._render_filament import (
   Texture as Texture,
 )
 from mujoco._render_filament import (
@@ -117,6 +171,9 @@ from mujoco._render_filament import (
   TextureData as TextureData,
 )
 from mujoco._render_filament import (
+  ToneMapper as ToneMapper,
+)
+from mujoco._render_filament import (
   VertexAttribute as VertexAttribute,
 )
 from mujoco._render_filament import (
@@ -124,4 +181,10 @@ from mujoco._render_filament import (
 )
 from mujoco._render_filament import (
   VertexAttributeUsage as VertexAttributeUsage,
+)
+from mujoco._render_filament import (
+  VignetteOpts as VignetteOpts,
+)
+from mujoco._render_filament import (
+  model_render_opts as model_render_opts,
 )

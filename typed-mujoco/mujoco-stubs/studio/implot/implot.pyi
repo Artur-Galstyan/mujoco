@@ -11,7 +11,7 @@ from typing import ClassVar, overload
 
 from typing_extensions import Never
 
-from mujoco.experimental.dear_imgui import dear_imgui as imgui
+from mujoco.studio.dear_imgui import dear_imgui as imgui
 
 class Point:
   @overload
@@ -31,6 +31,11 @@ class Range:
 
 def set_imgui_context(ptr: int) -> None: ...
 def set_implot_context(ptr: int) -> None: ...
+def CreateContext() -> int:
+  """Create a context and make it current; return its handle."""
+
+def DestroyContext(ptr: int = 0) -> None:
+  """Destroy the given context; 0 selects the current one."""
 
 class Axis:
   __members__: ClassVar[dict[str, Axis]]

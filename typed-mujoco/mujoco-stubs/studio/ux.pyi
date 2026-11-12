@@ -5,7 +5,7 @@
 #     https://www.apache.org/licenses/LICENSE-2.0
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS.
-# Modified for typed-mujoco 3.17.0 compatibility.
+# Modified for typed-mujoco 4.0.1 compatibility.
 
 from collections.abc import Callable, Sequence
 from typing import ClassVar
@@ -14,7 +14,7 @@ import numpy as np
 from numpy import typing as npt
 
 from mujoco import MjData, MjModel, MjSpec, MjvCamera, MjvOption, MjvPerturb
-from mujoco.experimental.studio.sim import SimHistory, StepControl
+from mujoco.studio.sim import SimHistory, StepControl
 
 class RenderFlags:
   """Studio render flags. Reading flags returns a copy; assign to write them."""
@@ -155,7 +155,29 @@ def counts_gui(model: MjModel, data: MjData) -> None: ...
 def info_gui(
   model: MjModel, data: MjData, paused: bool, fps: float, gpu_ms: float = 0.0
 ) -> None: ...
+def unwind_imgui_frame() -> bool:
+  """Unwind every open ImGui and ImPlot scope; return whether a frame was in progress."""
 
+def view_gizmo_gui(
+  model: MjModel,
+  data: MjData,
+  camera: MjvCamera,
+  ux_state: UxState,
+  workspace_rect: Sequence[float],
+) -> bool:
+  """Render the view gizmo in the workspace rectangle; return whether the camera changed."""
+
+def move_camera_with_keys(
+  model: MjModel, camera: MjvCamera, speed: float
+) -> tuple[bool, float]:
+  """Fly the camera with the WASD/QE keys; return whether it moved and the next speed."""
+
+def move_camera_with_mouse(
+  model: MjModel, camera: MjvCamera, fly_camera: bool
+) -> bool:
+  """Move the camera with the mouse drags and wheel; return whether it moved."""
+
+MIN_FLY_SPEED: float
 FREE_CAMERA_IDX: int
 TUMBLE_CAMERA_IDX: int
 TRACKING_CAMERA_IDX: int

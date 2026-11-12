@@ -92,6 +92,7 @@ __all__: list[str] = [
   'mjtStage',
   'mjtState',
   'mjtStereo',
+  'mjtTendon',
   'mjtTexture',
   'mjtTextureRole',
   'mjtTimer',
@@ -319,6 +320,8 @@ class mjtEnableBit:
 
     mjENBL_IPC
 
+    mjENBL_SPECULATIVE
+
     mjNENABLE
   """
 
@@ -330,6 +333,7 @@ class mjtEnableBit:
   mjENBL_IPC: typing.ClassVar[mjtEnableBit]
   mjENBL_OVERRIDE: typing.ClassVar[mjtEnableBit]
   mjENBL_SLEEP: typing.ClassVar[mjtEnableBit]
+  mjENBL_SPECULATIVE: typing.ClassVar[mjtEnableBit]
   mjNENABLE: typing.ClassVar[mjtEnableBit]
   @typing.overload
   def __add__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
@@ -1173,6 +1177,149 @@ class mjtLightType:
   ) -> float: ...
   @typing.overload
   def __ne__(self, other: mjtLightType) -> bool: ...
+  @typing.overload
+  def __ne__(
+    self, other: typing.SupportsInt | typing.SupportsIndex
+  ) -> bool: ...
+  @typing.overload
+  def __ne__(self, other: object) -> bool: ...
+  def __neg__(self) -> int: ...
+  def __or__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @typing.overload
+  def __radd__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __radd__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __rand__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __rfloordiv__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __rfloordiv__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  @typing.overload
+  def __rmod__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __rmod__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  @typing.overload
+  def __rmul__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __rmul__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __ror__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  def __rshift__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __rsub__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __rsub__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __rtruediv__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __rxor__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  def __setstate__(
+    self, state: typing.SupportsInt | typing.SupportsIndex
+  ) -> None: ...
+  @typing.overload
+  def __sub__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @typing.overload
+  def __sub__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __truediv__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __xor__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @property
+  def name(self) -> str: ...
+  @property
+  def value(self) -> int: ...
+
+class mjtTendon:
+  """
+  Members:
+
+    mjTENDON_FIXED
+
+    mjTENDON_SPATIAL
+  """
+
+  __members__: typing.ClassVar[dict[str, mjtTendon]]
+  mjTENDON_FIXED: typing.ClassVar[mjtTendon]
+  mjTENDON_SPATIAL: typing.ClassVar[mjtTendon]
+  @typing.overload
+  def __add__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @typing.overload
+  def __add__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __and__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @typing.overload
+  def __eq__(self, other: mjtTendon) -> bool: ...
+  @typing.overload
+  def __eq__(
+    self, other: typing.SupportsInt | typing.SupportsIndex
+  ) -> bool: ...
+  @typing.overload
+  def __eq__(self, other: object) -> bool: ...
+  @typing.overload
+  def __floordiv__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __floordiv__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  def __getstate__(self) -> int: ...
+  def __hash__(self) -> int: ...
+  def __index__(self) -> int: ...
+  @typing.overload
+  def __init__(
+    self, value: typing.SupportsInt | typing.SupportsIndex
+  ) -> None: ...
+  @typing.overload
+  def __init__(
+    self, value: typing.SupportsInt | typing.SupportsIndex
+  ) -> None: ...
+  def __int__(self) -> int: ...
+  def __lshift__(
+    self, arg0: typing.SupportsInt | typing.SupportsIndex
+  ) -> int: ...
+  @typing.overload
+  def __mod__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @typing.overload
+  def __mod__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  @typing.overload
+  def __mul__(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> int: ...
+  @typing.overload
+  def __mul__(
+    self, arg0: typing.SupportsFloat | typing.SupportsIndex
+  ) -> float: ...
+  @typing.overload
+  def __ne__(self, other: mjtTendon) -> bool: ...
   @typing.overload
   def __ne__(
     self, other: typing.SupportsInt | typing.SupportsIndex
@@ -5628,6 +5775,8 @@ class mjtState:
 
     mjSTATE_PLUGIN
 
+    mjSTATE_PLASTIC
+
     mjNSTATE
 
     mjSTATE_PHYSICS
@@ -5650,6 +5799,7 @@ class mjtState:
   mjSTATE_MOCAP_POS: typing.ClassVar[mjtState]
   mjSTATE_MOCAP_QUAT: typing.ClassVar[mjtState]
   mjSTATE_PHYSICS: typing.ClassVar[mjtState]
+  mjSTATE_PLASTIC: typing.ClassVar[mjtState]
   mjSTATE_PLUGIN: typing.ClassVar[mjtState]
   mjSTATE_QFRC_APPLIED: typing.ClassVar[mjtState]
   mjSTATE_QPOS: typing.ClassVar[mjtState]
@@ -9790,6 +9940,8 @@ class mjtRndFlag:
 
     mjRND_CULL_FACE
 
+    mjRND_POST_PROCESSING
+
     mjNRNDFLAG
   """
 
@@ -9801,6 +9953,7 @@ class mjtRndFlag:
   mjRND_FOG: typing.ClassVar[mjtRndFlag]
   mjRND_HAZE: typing.ClassVar[mjtRndFlag]
   mjRND_IDCOLOR: typing.ClassVar[mjtRndFlag]
+  mjRND_POST_PROCESSING: typing.ClassVar[mjtRndFlag]
   mjRND_REFLECTION: typing.ClassVar[mjtRndFlag]
   mjRND_SEGMENT: typing.ClassVar[mjtRndFlag]
   mjRND_SHADOW: typing.ClassVar[mjtRndFlag]

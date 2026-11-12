@@ -391,11 +391,16 @@ class MjSpec:
     edgedamping: typing.SupportsFloat | typing.SupportsIndex | None = None,
     rgba: collections.abc.Sequence[typing.SupportsFloat | typing.SupportsIndex]
     | None = None,
-    material: str | None = None,
+    material: collections.abc.Sequence[str] | None = None,
     young: typing.SupportsFloat | typing.SupportsIndex | None = None,
     poisson: typing.SupportsFloat | typing.SupportsIndex | None = None,
+    shear: typing.SupportsFloat | typing.SupportsIndex | None = None,
     damping: typing.SupportsFloat | typing.SupportsIndex | None = None,
     thickness: typing.SupportsFloat | typing.SupportsIndex | None = None,
+    stressyield: collections.abc.Sequence[
+      typing.SupportsFloat | typing.SupportsIndex
+    ]
+    | None = None,
     elastic2d: typing.SupportsInt | typing.SupportsIndex | None = None,
     elastic3d: typing.SupportsInt | typing.SupportsIndex | None = None,
     section: typing.SupportsInt | typing.SupportsIndex | None = None,
@@ -452,11 +457,13 @@ class MjSpec:
       edgestiffness: float
       edgedamping: float
       rgba: list[float]
-      material: str
+      material: list[str]
       young: float
       poisson: float
+      shear: float
       damping: float
       thickness: float
+      stressyield: list[float]
       elastic2d: int
       elastic3d: int
       section: int
@@ -516,6 +523,10 @@ class MjSpec:
     | None = None,
     ctrl: collections.abc.Sequence[typing.SupportsFloat | typing.SupportsIndex]
     | None = None,
+    plastic: collections.abc.Sequence[
+      typing.SupportsFloat | typing.SupportsIndex
+    ]
+    | None = None,
     info: str | None = None,
   ) -> MjsKey:
     """
@@ -530,6 +541,7 @@ class MjSpec:
       mpos: list[float]
       mquat: list[float]
       ctrl: list[float]
+      plastic: list[float]
       info: str
     """
   def add_material(
@@ -849,6 +861,7 @@ class MjSpec:
       typing.SupportsFloat | typing.SupportsIndex
     ]
     | None = None,
+    springyield: typing.SupportsFloat | typing.SupportsIndex | None = None,
     damping: _ScalarOrArray | None = None,
     frictionloss: typing.SupportsFloat | typing.SupportsIndex | None = None,
     solref_friction: collections.abc.Sequence[
@@ -895,6 +908,7 @@ class MjSpec:
       name: str
       stiffness: Optional[list[float]]
       springlength: list[float]
+      springyield: float
       damping: Optional[list[float]]
       frictionloss: float
       solref_friction: list[float]
@@ -1105,7 +1119,10 @@ class MjSpec:
   def pair(self, arg0: str) -> MjsPair | None: ...
   def plugin(self, arg0: str) -> MjsPlugin | None: ...
   def recompile(
-    self, arg0: mujoco._structs.MjModel, arg1: mujoco._structs.MjData
+    self,
+    m: mujoco._structs.MjModel,
+    d: mujoco._structs.MjData,
+    vfs: MjVfs | None = None,
   ) -> builtins.tuple[mujoco._structs.MjModel, mujoco._structs.MjData]: ...
   def sensor(self, arg0: str) -> MjsSensor | None: ...
   def site(self, arg0: str) -> MjsSite | None: ...
@@ -1585,6 +1602,7 @@ class MjsBody:
     rgba: collections.abc.Sequence[typing.SupportsFloat | typing.SupportsIndex]
     | None = None,
     group: typing.SupportsInt | typing.SupportsIndex | None = None,
+    castshadow: typing.SupportsInt | typing.SupportsIndex | None = None,
     hfieldname: str | None = None,
     meshname: str | None = None,
     fitscale: typing.SupportsFloat | typing.SupportsIndex | None = None,
@@ -1629,6 +1647,7 @@ class MjsBody:
       material: str
       rgba: list[float]
       group: int
+      castshadow: int
       hfieldname: str
       meshname: str
       fitscale: float
@@ -1649,6 +1668,7 @@ class MjsBody:
     align: typing.SupportsInt | typing.SupportsIndex | None = None,
     stiffness: _ScalarOrArray | None = None,
     springref: typing.SupportsFloat | typing.SupportsIndex | None = None,
+    springyield: typing.SupportsFloat | typing.SupportsIndex | None = None,
     springdamper: collections.abc.Sequence[
       typing.SupportsFloat | typing.SupportsIndex
     ]
@@ -1701,6 +1721,7 @@ class MjsBody:
       align: int
       stiffness: Optional[list[float]]
       springref: float
+      springyield: float
       springdamper: list[float]
       limited: int
       range: list[float]
@@ -2295,6 +2316,7 @@ class MjsFrame:
     rgba: collections.abc.Sequence[typing.SupportsFloat | typing.SupportsIndex]
     | None = None,
     group: typing.SupportsInt | typing.SupportsIndex | None = None,
+    castshadow: typing.SupportsInt | typing.SupportsIndex | None = None,
     hfieldname: str | None = None,
     meshname: str | None = None,
     fitscale: typing.SupportsFloat | typing.SupportsIndex | None = None,
@@ -2339,6 +2361,7 @@ class MjsFrame:
       material: str
       rgba: list[float]
       group: int
+      castshadow: int
       hfieldname: str
       meshname: str
       fitscale: float
@@ -2359,6 +2382,7 @@ class MjsFrame:
     align: typing.SupportsInt | typing.SupportsIndex | None = None,
     stiffness: _ScalarOrArray | None = None,
     springref: typing.SupportsFloat | typing.SupportsIndex | None = None,
+    springyield: typing.SupportsFloat | typing.SupportsIndex | None = None,
     springdamper: collections.abc.Sequence[
       typing.SupportsFloat | typing.SupportsIndex
     ]
@@ -2411,6 +2435,7 @@ class MjsFrame:
       align: int
       stiffness: Optional[list[float]]
       springref: float
+      springyield: float
       springdamper: list[float]
       limited: int
       range: list[float]
@@ -2603,6 +2628,7 @@ class MjsFrame:
 
 class MjsGeom:
   alt: MjsOrientation
+  castshadow: bool
   classname: MjsDefault
   hfieldname: str
   info: str
@@ -2928,6 +2954,12 @@ class MjsJoint:
   def springref(self) -> float: ...
   @springref.setter
   def springref(
+    self, arg1: typing.SupportsFloat | typing.SupportsIndex
+  ) -> None: ...
+  @property
+  def springyield(self) -> float: ...
+  @springyield.setter
+  def springyield(
     self, arg1: typing.SupportsFloat | typing.SupportsIndex
   ) -> None: ...
   @property
@@ -3742,7 +3774,6 @@ class MjsCamera:
 class MjsFlex:
   flatskin: bool
   info: str
-  material: str
   name: str
   @property
   def activelayers(self) -> int: ...
@@ -3843,6 +3874,15 @@ class MjsFlex:
     self, arg1: typing.SupportsFloat | typing.SupportsIndex
   ) -> None: ...
   @property
+  def material(self) -> MjStringVec: ...
+  @material.setter
+  def material(
+    self,
+    arg1: collections.abc.Sequence[str | bytes]
+    | numpy.typing.NDArray[numpy.str_]
+    | numpy.typing.NDArray[numpy.bytes_],
+  ) -> None: ...
+  @property
   def node(self) -> MjDoubleVec: ...
   @node.setter
   def node(self, arg1: numpy.typing.ArrayLike) -> None: ...
@@ -3912,6 +3952,12 @@ class MjsFlex:
     self, arg1: typing.SupportsInt | typing.SupportsIndex
   ) -> None: ...
   @property
+  def shear(self) -> float: ...
+  @shear.setter
+  def shear(
+    self, arg1: typing.SupportsFloat | typing.SupportsIndex
+  ) -> None: ...
+  @property
   def signature(self) -> int: ...
   @property
   def size(
@@ -3943,6 +3989,14 @@ class MjsFlex:
   ]: ...
   @solref.setter
   def solref(self, arg1: numpy.typing.ArrayLike) -> None: ...
+  @property
+  def stressyield(
+    self,
+  ) -> typing.Annotated[
+    numpy.typing.NDArray[numpy.float64], '[2, 1]', 'flags.writeable'
+  ]: ...
+  @stressyield.setter
+  def stressyield(self, arg1: numpy.typing.ArrayLike) -> None: ...
   @property
   def texcoord(self) -> MjFloatVec: ...
   @texcoord.setter
@@ -4028,6 +4082,10 @@ class MjsKey:
   def mquat(self) -> MjDoubleVec: ...
   @mquat.setter
   def mquat(self, arg1: numpy.typing.ArrayLike) -> None: ...
+  @property
+  def plastic(self) -> MjDoubleVec: ...
+  @plastic.setter
+  def plastic(self, arg1: numpy.typing.ArrayLike) -> None: ...
   @property
   def qpos(self) -> MjDoubleVec: ...
   @qpos.setter
@@ -4313,6 +4371,12 @@ class MjsTendon:
   ]: ...
   @springlength.setter
   def springlength(self, arg1: numpy.typing.ArrayLike) -> None: ...
+  @property
+  def springyield(self) -> float: ...
+  @springyield.setter
+  def springyield(
+    self, arg1: typing.SupportsFloat | typing.SupportsIndex
+  ) -> None: ...
   @property
   def stiffness(
     self,

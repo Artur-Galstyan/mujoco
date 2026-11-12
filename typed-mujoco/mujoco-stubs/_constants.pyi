@@ -64,6 +64,7 @@ mjENABLESTRING: tuple = (
   'Sleep',
   'DiagExact',
   'IPC',
+  'Speculative',
 )
 mjFRAMESTRING: tuple = (
   'None',
@@ -108,5 +109,5 @@ mjSC_IN: int = 1
 mjSC_INOUT: int = 3
 mjSC_OUT: int = 2
 mjTIMERSTRING: tuple = ...
-mjVERSION_HEADER: int = 3017000
+mjVERSION_HEADER: int = 4000001
 mjVISSTRING: tuple = ...
