@@ -19,12 +19,12 @@ import platform
 import runpy
 import sys
 import tempfile
+import tomllib
 import unittest
 from pathlib import Path
 from unittest import mock
 
 import setuptools
-import tomllib
 
 PYTHON = Path(__file__).resolve().parents[1]
 CORE = (
@@ -362,7 +362,7 @@ class SourceBuildTest(unittest.TestCase):
         wheel = self.tmp / 'wheel' / system / 'mujoco/plugin'
         self.assertTrue((wheel / name).is_file())
 
-  def test_missing_core_extensions_fail_but_optional_ones_skip(self):
+  def test_missing_extensions_fail(self):
     self.assertTrue(
       {f'mujoco.{name}' for name in CORE}
       <= {extension.name for extension in self.extensions}
@@ -373,11 +373,10 @@ class SourceBuildTest(unittest.TestCase):
           self.command.build_extension(
             self.module['CMakeExtension'](f'mujoco.{name}')
           )
-    with mock.patch('builtins.print') as warning:
+    with self.assertRaisesRegex(RuntimeError, '_render_filament'):
       self.command.build_extension(
         self.module['CMakeExtension']('mujoco._render_filament')
       )
-    self.assertIn('Skipping', warning.call_args.args[0])
 
 
 if __name__ == '__main__':
