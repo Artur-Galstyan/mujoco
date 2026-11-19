@@ -503,16 +503,18 @@ bool App::Update() {
   }
   last_frame_time_ = now;
 
-  const Window::Status status = window_->NewFrame();
-
-  std::unique_lock<std::mutex> lock(physics_mutex_);
-
   // Execute any operations that could not be performed during the actual
-  // BuildGui() flow.
+  // BuildGui() flow. Run before NewFrame() because operations like
+  // SwitchGraphicsMode() recreate window_ and the ImGui context.
   if (pending_op_) {
+    std::unique_lock<std::mutex> lock(physics_mutex_);
     pending_op_();
     pending_op_ = nullptr;
   }
+
+  const Window::Status status = window_->NewFrame();
+
+  std::unique_lock<std::mutex> lock(physics_mutex_);
 
   HandleWindowEvents();
   HandleMouseEvents();
@@ -538,11 +540,7 @@ bool App::Update() {
 }
 
 void App::Render() {
-  const float width = window_->GetWidth();
-  const float height = window_->GetHeight();
-  const float scale = window_->GetScale();
-  const mjrRect viewport = {0, 0, static_cast<int>(width * scale),
-                            static_cast<int>(height * scale)};
+  const mjrRect viewport = GetSceneViewport();
 
   if (model_scene_) {
     std::unique_lock<std::mutex> lock(physics_mutex_);
@@ -567,21 +565,29 @@ void App::Render() {
   window_->Present(renderer_->GetPixels(target));
 }
 
-std::span<const std::byte> App::RenderToTexture(mjvCamera* camera, int width, int height) {
+std::span<const std::byte> App::RenderToTexture(mjvCamera* camera, int width, int height,
+                                                mjrDrawMode draw_mode) {
   auto target = renderer_->GetRenderTargetHandle("tmp");
   renderer_->ResizeRenderTarget(target, width, height);
 
   Renderer::View views[1] = {GetSceneView()};
-  views[0].camera = mjv_camera2GLCamera(model(), data(), camera);
+  if (camera != nullptr) {
+    views[0].draw_mode = draw_mode;
+    views[0].camera = mjv_camera2GLCamera(model(), data(), camera);
+  }
   views[0].render_target = target;
   renderer_->Render(views);
   return renderer_->GetPixels(target);
 }
 
+mjrRect App::GetSceneViewport() const {
+  return {0, 0, window_->GetDrawableWidth(), window_->GetDrawableHeight()};
+}
+
 Renderer::View App::GetSceneView() {
   Renderer::View view;
   view.scene = renderer_->GetSceneHandle("studio");
-  view.camera = mjv_camera2GLCamera(model(), data(), &camera_);
+  view.camera = ViewCamera(model(), data(), &camera_, window_->GetDrawableAspectRatio());
   if (render_flags_[mjRND_SEGMENT]) {
     if (render_flags_[mjRND_IDCOLOR]) {
       view.draw_mode = mjDRAW_MODE_SEGMENTATION_BY_ID;
@@ -613,8 +619,9 @@ Renderer::View App::GetSceneView() {
 }
 
 Renderer::View App::GetUxView() {
-  const int width = window_->GetWidth() * window_->GetScale();
-  const int height = window_->GetHeight() * window_->GetScale();
+  const mjrRect viewport = GetSceneViewport();
+  const int width = viewport.width;
+  const int height = viewport.height;
 
   Renderer::View view;
   view.scene = renderer_->GetSceneHandle("ux");
@@ -894,6 +901,8 @@ void App::HandleMouseEvents() {
     perturb_.active = 0;
   }
 
+  const float aspect_ratio = window_->GetDrawableAspectRatio();
+
   // Handle perturbation mouse actions.
   if (is_mouse_dragging && io.KeyCtrl) {
     if (perturb_.select > 0) {
@@ -914,7 +923,7 @@ void App::HandleMouseEvents() {
       if (active != perturb_.active) {
         InitPerturb(model(), data(), &camera_, &perturb_, active);
       }
-      MovePerturb(model(), data(), &camera_, &perturb_, action, mouse_dx, mouse_dy);
+      MovePerturb(model(), data(), &camera_, &perturb_, action, mouse_dx, mouse_dy, aspect_ratio);
     }
   }
 
@@ -923,8 +932,9 @@ void App::HandleMouseEvents() {
 
   // Left double click.
   if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+    const mjrCamera view_camera = ViewCamera(model(), data(), &camera_, aspect_ratio);
     PickResult picked =
-        Pick(model(), data(), &camera_, mouse_x, mouse_y, window_->GetAspectRatio(), &vis_options_);
+        Pick(model(), data(), view_camera, mouse_x, mouse_y, aspect_ratio, &vis_options_);
     if (picked.body >= 0) {
       perturb_.select = picked.body;
       perturb_.flexselect = picked.flex;
@@ -954,8 +964,9 @@ void App::HandleMouseEvents() {
 
   // Right double click.
   if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Right)) {
+    const mjrCamera view_camera = ViewCamera(model(), data(), &camera_, aspect_ratio);
     PickResult picked =
-        Pick(model(), data(), &camera_, mouse_x, mouse_y, window_->GetAspectRatio(), &vis_options_);
+        Pick(model(), data(), view_camera, mouse_x, mouse_y, aspect_ratio, &vis_options_);
     mju_copy3(camera_.lookat, picked.point);
     if (picked.body > 0 && io.KeyCtrl) {
       // Switch camera to tracking mode and track the selected body.
@@ -1336,22 +1347,13 @@ void App::BuildGui() {
   if (tmp_.picture_in_picture) {
     if (ImGui::Begin("Picture-in-Picture", &tmp_.picture_in_picture)) {
       auto render_cb = [this](const PipState& pip, int width, int height) {
-        mjtByte* flags = render_flags_;
-        const int prev_depth = flags[mjRND_DEPTH];
-        const int prev_segment = flags[mjRND_SEGMENT];
-        flags[mjRND_DEPTH] = (pip.mode == PipState::Depth) ? 1 : 0;
-        flags[mjRND_SEGMENT] = (pip.mode == PipState::Segmentation) ? 1 : 0;
-
         mjvCamera camera;
         mjv_defaultCamera(&camera);
         camera.type = mjCAMERA_FIXED;
         camera.fixedcamid = pip.camera;
 
-        auto output = RenderToTexture(&camera, width, height);
+        auto output = RenderToTexture(&camera, width, height, pip.draw_mode);
         int id = imgui_bridge_->UploadImage(pip.texture, output, width, height);
-
-        flags[mjRND_DEPTH] = prev_depth;
-        flags[mjRND_SEGMENT] = prev_segment;
         return id;
       };
 
@@ -2390,7 +2392,7 @@ void App::FileDialogGui() {
         case UiTempState::FileDialog_SaveScreenshot: {
           const int width = window_->GetWidth();
           const int height = window_->GetHeight();
-          auto buffer = RenderToTexture(&camera_, width, height);
+          auto buffer = RenderToTexture(nullptr, width, height);
           SaveToWebp(width, height, buffer.data(), res.path);
           break;
         }

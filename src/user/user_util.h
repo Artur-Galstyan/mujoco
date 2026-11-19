@@ -66,6 +66,10 @@ void mjuu_zerovec(float* dest, int n);
 // dot-product in 3D
 double mjuu_dot3(const double* a, const double* b);
 
+// number of points of a grid with count[i] points along axis i; -1 if a count is not positive
+// or if the number does not fit in an int
+int mjuu_gridSize(const int count[3]);
+
 // distance between 3D points
 double mjuu_dist3(const double* a, const double* b);
 
@@ -297,8 +301,12 @@ std::vector<std::string> StringToVector(const std::string& s);
 
 }  // namespace mujoco::user
 
-// strip path from filename
+// strip path from filename (use when deriving asset names, which are always basenames)
 std::string mjuu_strippath(std::string filename);
+
+// strip path from filename, unless a registered resource provider claims the name
+// (use when applying strippath to asset file paths)
+std::string mjuu_stripLocalPath(std::string filename);
 
 // strip extension from filename
 std::string mjuu_stripext(std::string filename);

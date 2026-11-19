@@ -157,6 +157,7 @@ if(NOT EMSCRIPTEN)
   add_subdirectory(plugin/actuator)
   add_subdirectory(plugin/sensor)
   add_subdirectory(plugin/sdf)
+  add_subdirectory(plugin/package_uri)
 endif()
 add_subdirectory(plugin/gmsh_decoder)
 add_subdirectory(plugin/obj_decoder)
@@ -199,6 +200,9 @@ target_compile_options(
           ${EXTRA_COMPILE_OPTIONS}
           ${MUJOCO_CXX_FLAGS}
 )
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR (CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT MSVC))
+  target_compile_options(mujoco PRIVATE -ffp-contract=off)
+endif()
 target_link_options(
   mujoco
   PRIVATE

@@ -186,6 +186,7 @@ public enum mjtGeom : int{
   mjGEOM_SKIN = 106,
   mjGEOM_LABEL = 107,
   mjGEOM_TRIANGLE = 108,
+  mjGEOM_DISC = 109,
   mjGEOM_NONE = 1001,
 }
 public enum mjtProjection : int{
@@ -1123,6 +1124,7 @@ public unsafe struct mjModel_ {
   public UInt64 nefmCvert;
   public UInt64 nflexelemedge;
   public UInt64 nflexshelldata;
+  public UInt64 nflexcell;
   public UInt64 nflextexcoord;
   public UInt64 nJfe;
   public UInt64 nmesh;
@@ -1369,6 +1371,7 @@ public unsafe struct mjModel_ {
   public int* flex_group;
   public int* flex_interp;
   public int* flex_cellnum;
+  public int* flex_celladr;
   public int* flex_nodeadr;
   public int* flex_nodenum;
   public int* flex_vertadr;
@@ -1389,6 +1392,7 @@ public unsafe struct mjModel_ {
   public int* flex_nodebodyid;
   public int* flex_vertbodyid;
   public int* flex_vertcell;
+  public byte* flex_cellempty;
   public int* flex_edge;
   public int* flex_edgeflap;
   public int* flex_elem;
@@ -7756,6 +7760,9 @@ public static unsafe extern int mju_boxQP(double* res, double* R, int* index, do
 
 [DllImport("mujoco", CallingConvention = CallingConvention.Cdecl)]
 public static unsafe extern void mju_boxQPmalloc(double** res, double** R, int** index, double** H, double** g, int n, double** lower, double** upper);
+
+[DllImport("mujoco", CallingConvention = CallingConvention.Cdecl)]
+public static unsafe extern int mju_QP(double* res, double* dual, int* active, double* work, double* H, double* g, int n, double* lower, double* upper, double* A, double* alower, double* aupper, int m, double* threshold, double* compliance);
 
 [DllImport("mujoco", CallingConvention = CallingConvention.Cdecl)]
 public static unsafe extern double mju_muscleGain(double len, double vel, double* lengthrange, double acc0, double* prm);

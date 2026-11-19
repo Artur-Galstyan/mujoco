@@ -478,92 +478,11 @@ mjModel* mj_embedAssets(const mjModel* m, char* error, int error_sz) {
   }
 
   // a new model, with ntexdata and nbuffer for the embedded textures
-  mjModel* dest = nullptr;
-  mj_makeModel(&dest,
-               m->nq,
-               m->nv,
-               m->nu,
-               m->nactuator,
-               m->nout,
-               m->na,
-               m->nbody,
-               m->nbvh,
-               m->nbvhstatic,
-               m->nbvhdynamic,
-               m->noct,
-               m->njnt,
-               m->ntree,
-               m->nM,
-               m->nB,
-               m->nC,
-               m->nD,
-               m->ngeom,
-               m->nsite,
-               m->ncam,
-               m->nlight,
-               m->nflex,
-               m->nflexnode,
-               m->nflexvert,
-               m->nflexedge,
-               m->nflexelem,
-               m->nflexelemdata,
-               m->nflexstiffness,
-               m->nflexbending,
-               m->nefm0dof,
-               m->nefm0L,
-               m->nefmCvert,
-               m->nflexelemedge,
-               m->nflexshelldata,
-               m->nflextexcoord,
-               m->nJfe,
-               m->nmesh,
-               m->nmeshvert,
-               m->nmeshnormal,
-               m->nmeshtexcoord,
-               m->nmeshface,
-               m->nmeshgraph,
-               m->nmeshpoly,
-               m->nmeshpolyvert,
-               m->nmeshpolymap,
-               m->nskin,
-               m->nskinvert,
-               m->nskintexvert,
-               m->nskinface,
-               m->nskinbone,
-               m->nskinbonevert,
-               m->nhfield,
-               m->nhfielddata,
-               m->ntex,
-               ntexdata,
-               m->nmat,
-               m->npair,
-               m->nexclude,
-               m->neq,
-               m->ntendon,
-               m->nJten,
-               m->nwrap,
-               m->nsensor,
-               m->nnumeric,
-               m->nnumericdata,
-               m->ntext,
-               m->ntextdata,
-               m->ntuple,
-               m->ntupledata,
-               m->nkey,
-               m->nmocap,
-               m->nplugin,
-               m->npluginattr,
-               m->nuser_body,
-               m->nuser_jnt,
-               m->nuser_geom,
-               m->nuser_site,
-               m->nuser_cam,
-               m->nuser_tendon,
-               m->nuser_actuator,
-               m->nuser_sensor,
-               m->nnames,
-               m->npaths,
-               m->nplastic);
+  mjModel* dest  = nullptr;
+  mjModel  sizes = *m;
+  sizes.ntexdata = ntexdata;
+  mj_makeModel(&dest, &sizes);
+
   if (!dest) {
     free_pixels();
     CopyError(error, error_sz, "could not allocate model");
@@ -1503,6 +1422,10 @@ int mjs_makeMesh(mjsMesh* mesh, mjtMeshBuiltin builtin, double* params, int npar
           return -1;
         }
       }
+      if (mjuu_gridSize(count) < 0) {
+        m->SetError(mjCError(0, "Grid count too large"));
+        return -1;
+      }
       meshC->MakeGrid(count, spacing, dim, false);
       if ((dim == 3 ? mesh->usertet : mesh->userface)->empty()) {
         m->SetError(mjCError(0, "Failed to create grid mesh"));
@@ -1537,6 +1460,10 @@ int mjs_makeMesh(mjsMesh* mesh, mjtMeshBuiltin builtin, double* params, int npar
           m->SetError(mjCError(0, "Box/cylinder/ellipsoid count must be at least 2"));
           return -1;
         }
+      }
+      if (mjuu_gridSize(count) < 0) {
+        m->SetError(mjCError(0, "Box/cylinder/ellipsoid count too large"));
+        return -1;
       }
       if (builtin == mjMESH_BUILTIN_BOX) {
         meshC->MakeBox(count, spacing, dim, false, true);
@@ -1574,6 +1501,10 @@ int mjs_makeMesh(mjsMesh* mesh, mjtMeshBuiltin builtin, double* params, int npar
       }
       if (count[2] != 1) {
         m->SetError(mjCError(0, "Square/disc count[2] must be 1"));
+        return -1;
+      }
+      if (mjuu_gridSize(count) < 0) {
+        m->SetError(mjCError(0, "Square/disc count too large"));
         return -1;
       }
       if (builtin == mjMESH_BUILTIN_SQUARE) {

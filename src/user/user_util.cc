@@ -121,6 +121,18 @@ double mjuu_dot3(const double* a, const double* b) {
 }
 
 
+// number of points of a grid with count[i] points along axis i; -1 if a count is not positive
+// or if the number does not fit in an int
+int mjuu_gridSize(const int count[3]) {
+  int64_t size = 1;
+  for (int i = 0; i < 3; i++) {
+    if (count[i] < 1 || size * count[i] > INT_MAX) { return -1; }
+    size *= count[i];
+  }
+  return (int)size;
+}
+
+
 // distance between 3D points
 double mjuu_dist3(const double* a, const double* b) {
   return sqrt((a[0] - b[0]) * (a[0] - b[0]) +
@@ -845,6 +857,15 @@ std::string mjuu_strippath(std::string filename) {
   else {
     return filename.substr(start + 1, filename.size() - start - 1);
   }
+}
+
+
+// strip path from filename, unless a registered resource provider claims the name
+std::string mjuu_stripLocalPath(std::string filename) {
+  // provider names are not filesystem paths: the provider owns their interpretation
+  if (mjp_findProvider(filename.c_str())) { return filename; }
+
+  return mjuu_strippath(filename);
 }
 
 

@@ -1695,7 +1695,7 @@ std::string mjCBase::GetAssetContentType(std::string_view resource_name,
 // if the compiler settings ask for it; empty if there is no file
 std::string mjCBase::ResolvedSpecFile(const std::string& dir, std::string file) const {
   if (file.empty()) { return ""; }
-  if (model->spec.strippath) { file = mjuu_strippath(file); }
+  if (model->spec.strippath) { file = mjuu_stripLocalPath(file); }
   return ResolvePath(dir, file);
 }
 
@@ -2451,6 +2451,33 @@ void mjCBody::NameSpace_(const mjCModel* m, bool propagate) {
 }
 
 
+// true if all tree lists in model are in the unindexed state produced by ResetTreeLists
+bool mjCBody::TreeListsUnindexed() const {
+  if (model->IsAttached() || !model->specs_.empty()) { return false; }
+  return (model->bodies_.size() <= 1 || model->bodies_[1]->id == -1) &&
+         (model->joints_.empty() || model->joints_[0]->id == -1) &&
+         (model->geoms_.empty() || model->geoms_[0]->id == -1) &&
+         (model->sites_.empty() || model->sites_[0]->id == -1) &&
+         (model->cameras_.empty() || model->cameras_[0]->id == -1) &&
+         (model->lights_.empty() || model->lights_[0]->id == -1) &&
+         (model->frames_.empty() || model->frames_[0]->id == -1);
+}
+
+
+// update model tree list in O(1) when appended element is at DFS tail
+template <typename T>
+void mjCBody::AppendTreeObject(std::vector<T*>& ml, const std::vector<T*>& bl, T* obj) {
+  if (TreeListsUnindexed() && (ml.empty() ||
+                               this == model->bodies_.back() ||
+                               (bl.size() > 1 && ml.back() == bl[bl.size() - 2]))) {
+    ml.push_back(obj);
+  } else {
+    model->ResetTreeLists();
+    model->MakeTreeLists();
+  }
+}
+
+
 // create child body and add it to body
 mjCBody* mjCBody::AddBody(mjCDef* _def) {
   // create body
@@ -2458,14 +2485,24 @@ mjCBody* mjCBody::AddBody(mjCDef* _def) {
 
   // handle def recursion (i.e. childclass)
   obj->classname = _def ? _def->name : classname;
+  obj->parent    = this;
+
+  bool at_tail = (this == model->bodies_.back());
+  if (!at_tail) {
+    const mjCBody* p = this;
+    while (p->parent && p == p->parent->bodies.back()) { p = p->parent; }
+    at_tail = (p == model->bodies_[0]);
+  }
 
   bodies.push_back(obj);
 
   // recompute lists
-  model->ResetTreeLists();
-  model->MakeTreeLists();
-
-  obj->parent = this;
+  if (at_tail && TreeListsUnindexed()) {
+    model->bodies_.push_back(obj);
+  } else {
+    model->ResetTreeLists();
+    model->MakeTreeLists();
+  }
 
   // invalidate signature
   model->InvalidateSignature();
@@ -2481,8 +2518,7 @@ mjCFrame* mjCBody::AddFrame(mjCFrame* _frame) {
   obj->body = this;
 
   frames.push_back(obj);
-  model->ResetTreeLists();
-  model->MakeTreeLists();
+  AppendTreeObject(model->frames_, frames, obj);
 
   // invalidate signature
   model->InvalidateSignature();
@@ -2502,8 +2538,7 @@ mjCJoint* mjCBody::AddFreeJoint() {
   joints.push_back(obj);
 
   // recompute lists
-  model->ResetTreeLists();
-  model->MakeTreeLists();
+  AppendTreeObject(model->joints_, joints, obj);
 
   // invalidate signature
   model->InvalidateSignature();
@@ -2529,8 +2564,7 @@ mjCJoint* mjCBody::AddJoint(mjCDef* _def) {
   joints.push_back(obj);
 
   // recompute lists
-  model->ResetTreeLists();
-  model->MakeTreeLists();
+  AppendTreeObject(model->joints_, joints, obj);
 
   // invalidate signature
   model->InvalidateSignature();
@@ -2549,8 +2583,7 @@ mjCGeom* mjCBody::AddGeom(mjCDef* _def) {
   geoms.push_back(obj);
 
   // recompute lists
-  model->ResetTreeLists();
-  model->MakeTreeLists();
+  AppendTreeObject(model->geoms_, geoms, obj);
 
   // invalidate signature
   model->InvalidateSignature();
@@ -2569,8 +2602,7 @@ mjCSite* mjCBody::AddSite(mjCDef* _def) {
   sites.push_back(obj);
 
   // recompute lists
-  model->ResetTreeLists();
-  model->MakeTreeLists();
+  AppendTreeObject(model->sites_, sites, obj);
 
   // invalidate signature
   model->InvalidateSignature();
@@ -2589,8 +2621,7 @@ mjCCamera* mjCBody::AddCamera(mjCDef* _def) {
   cameras.push_back(obj);
 
   // recompute lists
-  model->ResetTreeLists();
-  model->MakeTreeLists();
+  AppendTreeObject(model->cameras_, cameras, obj);
 
   // invalidate signature
   model->InvalidateSignature();
@@ -2609,8 +2640,7 @@ mjCLight* mjCBody::AddLight(mjCDef* _def) {
   lights.push_back(obj);
 
   // recompute lists
-  model->ResetTreeLists();
-  model->MakeTreeLists();
+  AppendTreeObject(model->lights_, lights, obj);
 
   // invalidate signature
   model->InvalidateSignature();
@@ -5652,18 +5682,22 @@ void mjCHField::LoadCustom(mjResource* resource) {
   if (nrow < 2 || ncol < 2) {
     throw mjCError(this, "hfield dimensions must be at least 2 in file '%s'", resource->name);
   }
+  if ((int64_t)nrow * (int64_t)ncol > std::numeric_limits<int>::max()) {
+    throw mjCError(this, "hfield nrow*ncol overflows int in file '%s'", resource->name);
+  }
+  size_t npix = (size_t)nrow * (size_t)ncol;
 
   // check buffer size
-  if (buffer_sz != nrow * ncol * sizeof(float) + 8) {
+  if ((mjtSize)buffer_sz != (mjtSize)npix * (mjtSize)sizeof(float) + 8) {
     throw mjCError(this, "unexpected file size in file '%s'", resource->name);
   }
 
   // allocate
-  data.assign(nrow * ncol, 0);
+  data.assign(npix, 0);
   if (data.empty()) { throw mjCError(this, "could not allocate buffers in hfield"); }
 
   // copy data
-  memcpy(data.data(), (void*)(pint + 2), nrow * ncol * sizeof(float));
+  memcpy(data.data(), (void*)(pint + 2), npix * sizeof(float));
 }
 
 
@@ -5676,9 +5710,12 @@ void mjCHField::LoadPNG(mjResource* resource) {
   if (nrow < 2 || ncol < 2) {
     throw mjCError(this, "hfield dimensions must be at least 2 in file '%s'", resource->name);
   }
+  if ((int64_t)nrow * (int64_t)ncol > std::numeric_limits<int>::max()) {
+    throw mjCError(this, "hfield nrow*ncol overflows int in file '%s'", resource->name);
+  }
 
   // copy image data over with rows reversed
-  data.reserve(nrow * ncol);
+  data.reserve((size_t)nrow * (size_t)ncol);
   for (int r = 0; r < nrow; r++) {
     for (int c = 0; c < ncol; c++) { data.push_back((float)image[c + (nrow - 1 - r) * ncol]); }
   }
@@ -5692,12 +5729,16 @@ void mjCHField::Compile(const mjVFS* vfs) {
   // copy userdata into data
   if (!userdata_.empty()) {
     if (nrow < 2 || ncol < 2) { throw mjCError(this, "hfield dimensions must be at least 2"); }
-    if (nrow * ncol != userdata_.size()) {
+    if ((int64_t)nrow * (int64_t)ncol > std::numeric_limits<int>::max()) {
+      throw mjCError(this, "hfield nrow*ncol overflows int");
+    }
+    size_t npix = (size_t)nrow * (size_t)ncol;
+    if (npix != userdata_.size()) {
       throw mjCError(this, "elevation data length must match nrow*ncol");
     }
-    data.assign(nrow * ncol, 0);
+    data.assign(npix, 0);
     if (data.empty()) { throw mjCError(this, "could not allocate buffers in hfield"); }
-    memcpy(data.data(), userdata_.data(), nrow * ncol * sizeof(float));
+    memcpy(data.data(), userdata_.data(), npix * sizeof(float));
   }
 
   // check size parameters
@@ -5705,7 +5746,7 @@ void mjCHField::Compile(const mjVFS* vfs) {
     if (size[i] <= 0) throw mjCError(this, "size parameter is not positive in hfield");
 
   // remove path from file if necessary
-  if (model->strippath) { file_ = mjuu_strippath(file_); }
+  if (model->strippath) { file_ = mjuu_stripLocalPath(file_); }
 
   // load from file if specified
   if (!file_.empty()) {
@@ -5779,6 +5820,9 @@ void mjCHField::Compile(const mjVFS* vfs) {
   // make sure hfield was specified (from file or manually)
   if (nrow < 1 || ncol < 1 || data.empty()) { throw mjCError(this, "hfield not specified"); }
   if (nrow < 2 || ncol < 2) { throw mjCError(this, "hfield dimensions must be at least 2"); }
+  if ((int64_t)nrow * (int64_t)ncol > std::numeric_limits<int>::max()) {
+    throw mjCError(this, "hfield nrow*ncol overflows int");
+  }
 
   // set elevation data to [0-1] range
   float emin = 1E+10, emax = -1E+10;
@@ -6483,7 +6527,7 @@ void mjCTexture::LoadCubeSeparate(const mjVFS* vfs) {
   for (int i = 0; i < 6; i++) {
     if (!cubefiles_[i].empty()) {
       // remove path from file if necessary
-      if (model->strippath) { cubefiles_[i] = mjuu_strippath(cubefiles_[i]); }
+      if (model->strippath) { cubefiles_[i] = mjuu_stripLocalPath(cubefiles_[i]); }
 
       // make filename
       mujoco::user::FilePath texturedir_;
@@ -6667,7 +6711,7 @@ void mjCTexture::Compile(const mjVFS* vfs) {
   // single file
   else if (!file_.empty()) {
     // remove path from file if necessary
-    if (model->strippath) { file_ = mjuu_strippath(file_); }
+    if (model->strippath) { file_ = mjuu_stripLocalPath(file_); }
 
     // make filename
     FilePath filename = texturedir_ + FilePath(file_);
@@ -8865,25 +8909,41 @@ void mjCActuator::Compile(void) {
   }
 
   // DC motor: one activation per enabled state, as in mj_dcmotorSlots
-  if (dyntype == mjDYN_DCMOTOR && !plugin.active) {
-    int nslot =
-        (dynprm[7] > 0) + (gainprm[5] > 0) + (dynprm[2] > 0) + (dynprm[5] > 0) + (dynprm[0] > 0);
-    if (actdim < 0) {
-      actdim = nslot;
-    } else if (actdim != nslot) {
-      char msg[200];
-      mju::sprintf_arr(msg,
-                       "DC motor parameters in actuator '%s' (id = %d) require actdim %d, got %d",
-                       name.c_str(),
-                       id,
-                       nslot,
-                       actdim);
-      throw mjCError(this, "%s", msg);
-    }
-  }
+  int dcmotor_nslot =
+      (dynprm[7] > 0) + (gainprm[5] > 0) + (dynprm[2] > 0) + (dynprm[5] > 0) + (dynprm[0] > 0);
+  if (dyntype == mjDYN_DCMOTOR && !plugin.active && actdim < 0) { actdim = dcmotor_nslot; }
 
   // set actdim to 1 if it is unset and type is standard one-activation dyntype
   if (actdim < 0) { actdim = (dyntype != mjDYN_NONE); }
+
+  // the dynamics read their inputs without checks: an integrator has one activation per input,
+  // filter and muscle dynamics read the first input
+  if (dyntype == mjDYN_INTEGRATOR && actdim < ctrlnum_) {
+    throw mjCError(this,
+                   "integrator dynamics require one activation per input in actuator '%s' "
+                   "(id = %d)",
+                   name.c_str(),
+                   id);
+  }
+  if ((dyntype == mjDYN_FILTER || dyntype == mjDYN_FILTEREXACT || dyntype == mjDYN_MUSCLE) &&
+      ctrlnum_ < 1) {
+    throw mjCError(this,
+                   "filter and muscle dynamics require an input in actuator '%s' (id = %d)",
+                   name.c_str(),
+                   id);
+  }
+  if ((dyntype == mjDYN_DCMOTOR || gaintype == mjGAIN_DCMOTOR || biastype == mjBIAS_DCMOTOR) &&
+      !plugin.active &&
+      actdim != dcmotor_nslot) {
+    char msg[200];
+    mju::sprintf_arr(msg,
+                     "DC motor parameters in actuator '%s' (id = %d) require actdim %d, got %d",
+                     name.c_str(),
+                     id,
+                     dcmotor_nslot,
+                     actdim);
+    throw mjCError(this, "%s", msg);
+  }
 
   // DC motor always uses actearly
   if (dyntype == mjDYN_DCMOTOR && !actearly) {

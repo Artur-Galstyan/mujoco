@@ -1486,6 +1486,7 @@ Euler integrator, semi-implicit in velocity.
     self.assertEqual(mujoco.mjtGeom.mjGEOM_ARROW1, 101)
     self.assertEqual(mujoco.mjtGeom.mjGEOM_ARROW2, 102)
     self.assertEqual(mujoco.mjtGeom.mjGEOM_TRIANGLE, 108)
+    self.assertEqual(mujoco.mjtGeom.mjGEOM_DISC, 109)
     self.assertEqual(mujoco.mjtGeom.mjGEOM_NONE, 1001)
 
   def test_enum_from_int(self):
@@ -2041,6 +2042,74 @@ Euler integrator, semi-implicit in velocity.
     upper = np.ones((n,), dtype=DTYPE)
     rank = mujoco.mju_boxQP(res, r, index, h, g, lower, upper)
     self.assertGreater(rank, -1)
+
+  def test_keyword_arguments(self):
+    # a binding with all parameters
+    self.assertEqual(mujoco.mju_clip(max=1.0, x=2.0, min=0.0), 1.0)
+
+    # a binding with an omitted parameter: mju_boxQP infers n from res
+    n = 5
+
+    def args():
+      return dict(
+          upper=np.ones((n,), dtype=DTYPE),
+          lower=-np.ones((n,), dtype=DTYPE),
+          g=np.array([2, 0.5, -0.5, -2, 0], dtype=DTYPE),
+          H=np.eye(n, dtype=DTYPE),
+          index=np.zeros(n, np.int32),
+          R=np.zeros((n, n + 7), DTYPE),
+          res=np.zeros(n, DTYPE),
+      )
+
+    kwargs = args()
+    rank = mujoco.mju_boxQP(**kwargs)
+    pos = args()
+    expected_rank = mujoco.mju_boxQP(
+        pos['res'], pos['R'], pos['index'], pos['H'], pos['g'], pos['lower'],
+        pos['upper'],
+    )
+    self.assertEqual(rank, expected_rank)
+    np.testing.assert_array_equal(kwargs['res'], pos['res'])
+    np.testing.assert_array_equal(kwargs['res'], [-1, -0.5, 0.5, 1, 0])
+
+    # the omitted parameter is not an argument
+    with self.assertRaises(TypeError):
+      mujoco.mju_boxQP(n=n, **args())
+
+  def test_qp(self):
+    # min 0.5*|x|^2 - x0 - x1  s.t.  x0 + x1 <= 1,  x0 - x1 = 0.2
+    h = np.eye(2, dtype=DTYPE)
+    g = -np.ones((2,), dtype=DTYPE)
+    a = np.array([[1, 1], [1, -1]], dtype=DTYPE)
+    alower = np.array([-mujoco.mjMAXVAL, 0.2], dtype=DTYPE)
+    aupper = np.array([1, 0.2], dtype=DTYPE)
+    res = np.empty((2,), dtype=DTYPE)
+    dual = np.empty((4,), dtype=DTYPE)
+    active = np.zeros((4,), dtype=np.int32)
+    nactive = mujoco.mju_QP(
+        res, dual, active, None, h, g, None, None, a, alower, aupper, None, None
+    )
+    self.assertEqual(nactive, 2)
+    np.testing.assert_allclose(res, [0.6, 0.4], atol=1e-6)
+    np.testing.assert_allclose(dual, [0, 0, 0.5, -0.1], atol=1e-6)
+    np.testing.assert_array_equal(active, [0, 0, 1, -1])
+
+    # soft constraints yield
+    threshold = np.zeros((4,), dtype=DTYPE)
+    compliance = np.ones((4,), dtype=DTYPE)
+    nactive = mujoco.mju_QP(
+        res, None, active, None, h, g, None, None, a, alower, aupper,
+        threshold, compliance
+    )
+    self.assertEqual(nactive, 2)
+    np.testing.assert_array_equal(active, [0, 0, 2, -2])
+
+    # wrong size
+    with self.assertRaisesRegex(TypeError, 'size of alower should equal m'):
+      mujoco.mju_QP(
+          res, None, None, None, h, g, None, None, a, alower[:1], aupper, None,
+          None
+      )
 
   def test_mju_fill(self):
     res = np.empty(3, DTYPE)

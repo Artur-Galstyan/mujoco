@@ -12,6 +12,10 @@ low-level bindings that are meant to give as close to a direct access to the MuJ
 order to provide an API and semantics that developers would expect in a typical Python library, the bindings
 deliberately diverge from the raw MuJoCo API in a number of places, which are documented throughout this page.
 
+For reinforcement learning and sim-to-real robotics workflows in PyTorch, see
+`MuJoCo Playground <https://playground.mujoco.org>`__ and `reaf-sim <https://reaf-sim.readthedocs.io>`__, which build on
+``mujoco`` and :ref:`MuJoCo Warp <MJW>`.
+
 Google DeepMind’s `dm_control <https://github.com/google-deepmind/dm_control>`__ reinforcement learning library depends
 on the ``mujoco`` package and continues to be supported by Google DeepMind. For code that depends on dm_control versions
 prior to 1.0.0, consult the
@@ -645,7 +649,7 @@ The Python bindings provide the ``mujoco.MjVfs`` as a wrapper around the :ref:`m
 
    with mujoco.MjVfs() as vfs:
        vfs["model.xml"] = b"<mujoco/>"
-       spec = mujoco.MjSpec.from_string("model.xml", vfs=vfs)
+       spec = mujoco.MjSpec.from_file("model.xml", vfs=vfs)
        spec.compile(vfs=vfs)
 
 You can also create an instance directly and call ``close()`` when done:
@@ -864,7 +868,9 @@ modified, for example:
 
   texture = spec.add_texture(name='texture', height=1, width=3, nchannel=3)
   texture.data = bytes([255, 0, 0, 0, 255, 0, 0, 0, 255])  # Assign red, green and blue pixels.
-  texture.data[1] = 255  # Change the first pixel to yellow.
+  pixels = bytearray(texture.data)  # texture.data is bytes, so edit a copy.
+  pixels[1] = 255  # Change the first pixel to yellow.
+  texture.data = bytes(pixels)
 
 .. _PyMJCF:
 
