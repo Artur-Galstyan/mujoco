@@ -27,6 +27,8 @@ set(MUJOCO_ENGINE_SRCS
     engine_collision_flex.h
     engine_collision_gjk.c
     engine_collision_gjk.h
+    engine_collision_nonconvex.c
+    engine_collision_nonconvex.h
     engine_collision_primitive.c
     engine_collision_primitive.h
     engine_collision_sdf.c
@@ -88,7 +90,6 @@ set(MUJOCO_ENGINE_SRCS
     engine_thread.h
     engine_util_blas.c
     engine_util_blas.h
-    engine_util_blas_avx.h
     engine_util_errmem.c
     engine_util_errmem.h
     engine_util_misc.c
@@ -97,10 +98,8 @@ set(MUJOCO_ENGINE_SRCS
     engine_util_solve.h
     engine_util_sparse.c
     engine_util_sparse.h
-    engine_util_sparse_avx.h
     engine_util_spatial.c
     engine_util_spatial.h
-    engine_util_spatial_avx.h
     engine_vis_init.c
     engine_vis_init.h
     engine_vis_interact.c

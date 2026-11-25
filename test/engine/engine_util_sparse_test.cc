@@ -19,6 +19,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -103,6 +104,106 @@ TEST_F(EngineUtilSparseTest, MjuDotX3) {
     EXPECT_EQ(res2, mju_dotSparse(v12.data(), v2.data(), nnz, ind.data()))
         << "nnz=" << nnz;
   }
+}
+
+TEST_F(EngineUtilSparseTest, MjuDotX3AndSparseSimdParity) {
+  constexpr int kMaxNnz = 19;
+  std::vector<mjtNum> v10(kMaxNnz), v11(kMaxNnz), v12(kMaxNnz);
+  std::vector<mjtNum> v2(3 * kMaxNnz);
+  std::vector<int> ind(kMaxNnz);
+
+  for (int k = 0; k < 3 * kMaxNnz; ++k) {
+    v2[k] = mjtNum(1) / (k + 2) - mjtNum(1) / (2 * k + 3);
+  }
+  for (int i = 0; i < kMaxNnz; ++i) {
+    ind[i] = 3 * i + (i % 2);
+    mjtNum sign = (i & 2) ? -1 : 1;
+    v10[i] = sign * (mjtNum(1) / ((i / 4) + 1)) + mjtNum(1e-7) / (i + 3);
+    v11[i] = mjtNum(i + 1) / (2 * i + 5) - mjtNum(1) / (i + 7);
+    v12[i] = -sign * mjtNum(3) / (i + 2) + mjtNum(1e-6) * (i + 1);
+  }
+
+  auto scalar_dot_sparse = [](const mjtNum* vec1, const mjtNum* vec2, int nnz1,
+                              const int* ind1) {
+    int i = 0;
+    mjtNum res = 0;
+    int n_4 = nnz1 - 4;
+    if (n_4 >= 0) {
+      mjtNum r0 = vec1[0] * vec2[ind1[0]];
+      mjtNum r1 = vec1[1] * vec2[ind1[1]];
+      mjtNum r2 = vec1[2] * vec2[ind1[2]];
+      mjtNum r3 = vec1[3] * vec2[ind1[3]];
+      for (i = 4; i <= n_4; i += 4) {
+        r0 += vec1[i + 0] * vec2[ind1[i + 0]];
+        r1 += vec1[i + 1] * vec2[ind1[i + 1]];
+        r2 += vec1[i + 2] * vec2[ind1[i + 2]];
+        r3 += vec1[i + 3] * vec2[ind1[i + 3]];
+      }
+      res = (r0 + r2) + (r1 + r3);
+    }
+    for (; i < nnz1; ++i) {
+      res += vec1[i] * vec2[ind1[i]];
+    }
+    return res;
+  };
+
+  for (int nnz = 0; nnz <= kMaxNnz; ++nnz) {
+    mjtNum ref0 = scalar_dot_sparse(v10.data(), v2.data(), nnz, ind.data());
+    mjtNum ref1 = scalar_dot_sparse(v11.data(), v2.data(), nnz, ind.data());
+    mjtNum ref2 = scalar_dot_sparse(v12.data(), v2.data(), nnz, ind.data());
+
+    mjtNum ds0 = mju_dotSparse(v10.data(), v2.data(), nnz, ind.data());
+    mjtNum ds1 = mju_dotSparse(v11.data(), v2.data(), nnz, ind.data());
+    mjtNum ds2 = mju_dotSparse(v12.data(), v2.data(), nnz, ind.data());
+    EXPECT_EQ(std::memcmp(&ds0, &ref0, sizeof(mjtNum)), 0) << "nnz=" << nnz;
+    EXPECT_EQ(std::memcmp(&ds1, &ref1, sizeof(mjtNum)), 0) << "nnz=" << nnz;
+    EXPECT_EQ(std::memcmp(&ds2, &ref2, sizeof(mjtNum)), 0) << "nnz=" << nnz;
+
+    mjtNum res0 = -1, res1 = -1, res2 = -1;
+    mju_dotSparseX3(&res0, &res1, &res2, v10.data(), v11.data(), v12.data(),
+                    v2.data(), nnz, ind.data());
+    EXPECT_EQ(std::memcmp(&res0, &ref0, sizeof(mjtNum)), 0) << "nnz=" << nnz;
+    EXPECT_EQ(std::memcmp(&res1, &ref1, sizeof(mjtNum)), 0) << "nnz=" << nnz;
+    EXPECT_EQ(std::memcmp(&res2, &ref2, sizeof(mjtNum)), 0) << "nnz=" << nnz;
+
+    // Also test mju_addToSclScl parity for length nnz
+    std::vector<mjtNum> dst_simd(v10.begin(), v10.end());
+    std::vector<mjtNum> dst_ref(v10.begin(), v10.end());
+    mjtNum scl1 = mjtNum(1.25), scl2 = mjtNum(-0.75);
+    mju_addToSclScl(dst_simd.data(), v11.data(), scl1, scl2, nnz);
+    for (int j = 0; j < nnz; ++j) {
+      dst_ref[j] = dst_ref[j] * scl1 + v11[j] * scl2;
+    }
+    EXPECT_EQ(
+        std::memcmp(dst_simd.data(), dst_ref.data(), kMaxNnz * sizeof(mjtNum)),
+        0)
+        << "nnz=" << nnz;
+  }
+
+  // Test mju_mulMatVecSparse with and without rowsuper (supernodes of size 4 ->
+  // 3+1 and size 2)
+  constexpr int kNr = 6;
+  std::vector<mjtNum> mat(kNr * kMaxNnz);
+  int rownnz[kNr];
+  int rowadr[kNr];
+  std::vector<int> colind(kNr * kMaxNnz);
+  int rowsuper[kNr] = {3, 2, 1, 0, 1, 0};
+  for (int r = 0; r < kNr; ++r) {
+    rownnz[r] = (r < 4) ? 11 : 7;
+    rowadr[r] = r * kMaxNnz;
+    for (int j = 0; j < rownnz[r]; ++j) {
+      colind[rowadr[r] + j] = ind[j];
+      mat[rowadr[r] + j] = (r % 2 == 0 ? v10[j] : v11[j]) * (r + 1);
+    }
+  }
+  mjtNum mv_nosuper[kNr] = {0}, mv_super[kNr] = {0};
+  mju_mulMatVecSparse(mv_nosuper, mat.data(), v2.data(), kNr, rownnz, rowadr,
+                      colind.data(), nullptr);
+  mju_mulMatVecSparse(mv_super, mat.data(), v2.data(), kNr, rownnz, rowadr,
+                      colind.data(), rowsuper);
+  EXPECT_EQ(std::memcmp(mv_nosuper, mv_super, sizeof(mv_nosuper)), 0);
+  EXPECT_EQ(mju_compare(nullptr, nullptr, 0), 1);
+  EXPECT_EQ(mju_compare(nullptr, nullptr, -1), 1);
 }
 
 TEST_F(EngineUtilSparseTest, MjuDot2) {
@@ -216,7 +317,7 @@ TEST_F(EngineUtilSparseTest, MjuTranspose3by3) {
   int rowadrT[] = {0, 0, 0};
 
   mju_transposeSparse(matT, mat, 3, 3, rownnzT, rowadrT, colindT, nullptr,
-                      rownnz, rowadr, colind);
+                      rownnz, rowadr, colind, nullptr);
 
   EXPECT_THAT(matT, ElementsAre(1, 2, 1, 3));
   EXPECT_THAT(colindT, ElementsAre(0, 0, 1, 2));
@@ -240,7 +341,7 @@ TEST_F(EngineUtilSparseTest, MjuTranspose1by3) {
   int rowadrT[] = {0, 0, 0};
 
   mju_transposeSparse(matT, mat, 1, 3, rownnzT, rowadrT, colindT, nullptr,
-                      rownnz, rowadr, colind);
+                      rownnz, rowadr, colind, nullptr);
 
   EXPECT_THAT(matT, ElementsAre(1, 3));
   EXPECT_THAT(colindT, ElementsAre(0, 0));
@@ -264,7 +365,7 @@ TEST_F(EngineUtilSparseTest, MjuTranspose3by1) {
   int rowadrT[] = {0};
 
   mju_transposeSparse(matT, mat, 3, 1, rownnzT, rowadrT, colindT, nullptr,
-                      rownnz, rowadr, colind);
+                      rownnz, rowadr, colind, nullptr);
 
   EXPECT_THAT(matT, ElementsAre(1, 3));
   EXPECT_THAT(colindT, ElementsAre(0, 2));
@@ -281,21 +382,25 @@ TEST_F(EngineUtilSparseTest, MjuTransposeDense) {
   int colind[] = {0, 1, 2, 0, 1, 2, 0, 1, 2};
   int rownnz[] = {3, 3, 3};
   int rowadr[] = {0, 3, 6};
+  int rowsuper[] = {2, 1, 0};
 
-  mjtNum matT[] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
-  int colindT[] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
-  int rownnzT[] = {0, 0, 0};
-  int rowadrT[] = {0, 0, 0};
-  int rowsuperT[] = {0, 0, 0};
+  for (const int* in_super :
+       {static_cast<const int*>(nullptr), static_cast<const int*>(rowsuper)}) {
+    mjtNum matT[] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+    int colindT[] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+    int rownnzT[] = {0, 0, 0};
+    int rowadrT[] = {0, 0, 0};
+    int rowsuperT[] = {0, 0, 0};
 
-  mju_transposeSparse(matT, mat, 3, 3, rownnzT, rowadrT, colindT, rowsuperT,
-                      rownnz, rowadr, colind);
+    mju_transposeSparse(matT, mat, 3, 3, rownnzT, rowadrT, colindT, rowsuperT,
+                        rownnz, rowadr, colind, in_super);
 
-  EXPECT_THAT(matT, ElementsAre(1, 4, 7, 2, 5, 8, 3, 6, 9));
-  EXPECT_THAT(colindT, ElementsAre(0, 1, 2, 0, 1, 2, 0, 1, 2));
-  EXPECT_THAT(rownnzT, ElementsAre(3, 3, 3));
-  EXPECT_THAT(rowadrT, ElementsAre(0, 3, 6));
-  EXPECT_THAT(rowsuperT, ElementsAre(2, 1, 0));
+    EXPECT_THAT(matT, ElementsAre(1, 4, 7, 2, 5, 8, 3, 6, 9));
+    EXPECT_THAT(colindT, ElementsAre(0, 1, 2, 0, 1, 2, 0, 1, 2));
+    EXPECT_THAT(rownnzT, ElementsAre(3, 3, 3));
+    EXPECT_THAT(rowadrT, ElementsAre(0, 3, 6));
+    EXPECT_THAT(rowsuperT, ElementsAre(2, 1, 0));
+  }
 }
 
 TEST_F(EngineUtilSparseTest, MjuTransposeSuper) {
@@ -316,13 +421,111 @@ TEST_F(EngineUtilSparseTest, MjuTransposeSuper) {
   int rowsuperT[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
   mju_transposeSparse(matT, mat, 2, 13, rownnzT, rowadrT, colindT, rowsuperT,
-                      rownnz, rowadr, colind);
+                      rownnz, rowadr, colind, nullptr);
 
   EXPECT_THAT(matT, ElementsAre(1, 2, 6, 3, 7, 4, 8, 5, 9, 10, 11, 12));
   EXPECT_THAT(colindT, ElementsAre(0, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, 1));
   EXPECT_THAT(rownnzT, ElementsAre(0, 1, 1, 1, 2, 2, 2, 1, 1, 1, 0, 0, 0));
   EXPECT_THAT(rowadrT, ElementsAre(0, 0, 1, 2, 3, 5, 7, 9, 10, 11, 12, 12, 12));
   EXPECT_THAT(rowsuperT, ElementsAre(0, 1, 0, 0, 2, 1, 0, 2, 1, 0, 2, 1, 0));
+
+  // Verify non-NULL input rowsuper matches nullptr across mixed supernode sizes
+  // (1, 2, 3, 4, 5, 6, 9 plus empty rows), values, pattern-only, output
+  // rowsuper, non-zero rowadr[0], and padded (non-contiguous) rowadr.
+  constexpr int nc = 15;
+  struct RowGroup {
+    int count;
+    std::vector<int> cols;
+  };
+  const std::vector<RowGroup> groups = {
+      {1, {0, 1, 2}},
+      {3, {1, 2, 3, 7, 8, 9}},
+      {2, {}},  // empty rows
+      {4, {4, 5, 6, 10, 11, 12}},
+      {6, {1, 2, 3, 7, 8, 9}},
+      {5, {0, 5, 14}},
+      {9, {2, 3, 4, 11, 12, 13}},
+      {1, {14}},
+  };
+
+  for (int pad : {0, 1}) {
+    for (int base_offset : {0, 7}) {
+      std::vector<int> g_rownnz, g_rowadr, g_colind;
+      std::vector<mjtNum> g_mat;
+      int val_counter = 1;
+      for (const auto& g : groups) {
+        for (int s = 0; s < g.count; ++s) {
+          g_rowadr.push_back(base_offset + static_cast<int>(g_colind.size()));
+          g_rownnz.push_back(static_cast<int>(g.cols.size()));
+          for (int c : g.cols) {
+            g_colind.push_back(c);
+            g_mat.push_back(static_cast<mjtNum>(val_counter++));
+          }
+          if (pad) {
+            g_colind.push_back(-1);
+            g_mat.push_back(static_cast<mjtNum>(-999));
+          }
+        }
+      }
+
+      const int nr = static_cast<int>(g_rownnz.size());
+      int total_nnz = 0;
+      for (int nnz : g_rownnz) total_nnz += nnz;
+
+      std::vector<int> rel_rowadr(nr);
+      for (int r = 0; r < nr; ++r) rel_rowadr[r] = g_rowadr[r] - base_offset;
+      std::vector<int> rowsuper(nr, 0);
+      mju_superSparse(nr, rowsuper.data(), g_rownnz.data(), rel_rowadr.data(),
+                      g_colind.data());
+
+      // reference with rowsuper=nullptr
+      std::vector<mjtNum> ref_val(total_nnz, 0);
+      std::vector<int> ref_rownnz(nc, 0), ref_rowadr(nc, 0),
+          ref_colind(total_nnz, 0), ref_rowsuper(nc, 0);
+      mju_transposeSparse(
+          ref_val.data(), g_mat.data(), nr, nc, ref_rownnz.data(),
+          ref_rowadr.data(), ref_colind.data(), ref_rowsuper.data(),
+          g_rownnz.data(), g_rowadr.data(), g_colind.data(), nullptr);
+
+      // values + output supernodes with input rowsuper
+      std::vector<mjtNum> got_val(total_nnz, 0);
+      std::vector<int> got_rownnz(nc, 0), got_rowadr(nc, 0),
+          got_colind(total_nnz, 0), got_rowsuper(nc, 0);
+      mju_transposeSparse(
+          got_val.data(), g_mat.data(), nr, nc, got_rownnz.data(),
+          got_rowadr.data(), got_colind.data(), got_rowsuper.data(),
+          g_rownnz.data(), g_rowadr.data(), g_colind.data(), rowsuper.data());
+      EXPECT_EQ(got_val, ref_val);
+      EXPECT_EQ(got_rownnz, ref_rownnz);
+      EXPECT_EQ(got_rowadr, ref_rowadr);
+      EXPECT_EQ(got_colind, ref_colind);
+      EXPECT_EQ(got_rowsuper, ref_rowsuper);
+
+      // pattern-only + no output supernodes with input rowsuper
+      std::vector<int> pat_rownnz(nc, 0), pat_rowadr(nc, 0),
+          pat_colind(total_nnz, 0);
+      mju_transposeSparse(nullptr, nullptr, nr, nc, pat_rownnz.data(),
+                          pat_rowadr.data(), pat_colind.data(), nullptr,
+                          g_rownnz.data(), g_rowadr.data(), g_colind.data(),
+                          rowsuper.data());
+      EXPECT_EQ(pat_rownnz, ref_rownnz);
+      EXPECT_EQ(pat_rowadr, ref_rowadr);
+      EXPECT_EQ(pat_colind, ref_colind);
+
+      // precomputed res_rowadr (res_rownnz=nullptr): fills values & colind and
+      // restores res_rowadr
+      std::vector<mjtNum> pre_val(total_nnz, 0);
+      std::vector<int> pre_rowadr = ref_rowadr;
+      std::vector<int> pre_colind(total_nnz, 0);
+      mju_transposeSparse(pre_val.data(), g_mat.data(), nr, nc, nullptr,
+                          pre_rowadr.data(), pre_colind.data(), nullptr,
+                          g_rownnz.data(), g_rowadr.data(), g_colind.data(),
+                          rowsuper.data());
+      EXPECT_EQ(pre_val, ref_val);
+      EXPECT_EQ(pre_rowadr, ref_rowadr);
+      EXPECT_EQ(pre_colind, ref_colind);
+    }
+  }
 }
 
 TEST_F(EngineUtilSparseTest, MjuTranspose1by1) {
@@ -339,7 +542,7 @@ TEST_F(EngineUtilSparseTest, MjuTranspose1by1) {
   int rowadrT[] = {0};
 
   mju_transposeSparse(matT, mat, 1, 1, rownnzT, rowadrT, colindT, nullptr,
-                      rownnz, rowadr, colind);
+                      rownnz, rowadr, colind, nullptr);
 
   EXPECT_THAT(matT, ElementsAre(1));
   EXPECT_THAT(colindT, ElementsAre(0));
@@ -354,17 +557,22 @@ TEST_F(EngineUtilSparseTest, MjuTransposeNullMatrix) {
   int* colind = nullptr;
   int rownnz[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
   int rowadr[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  int rowsuper[10];
+  mju_superSparse(10, rowsuper, rownnz, rowadr, colind);
 
-  mjtNum* matT = nullptr;
-  int* colindT = nullptr;
-  int rownnzT[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
-  int rowadrT[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+  for (const int* in_super :
+       {static_cast<const int*>(nullptr), static_cast<const int*>(rowsuper)}) {
+    mjtNum* matT = nullptr;
+    int* colindT = nullptr;
+    int rownnzT[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+    int rowadrT[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
 
-  mju_transposeSparse(matT, mat, 10, 10, rownnzT, rowadrT, colindT, nullptr,
-                      rownnz, rowadr, colind);
+    mju_transposeSparse(matT, mat, 10, 10, rownnzT, rowadrT, colindT, nullptr,
+                        rownnz, rowadr, colind, in_super);
 
-  EXPECT_THAT(rownnzT, ElementsAre(0, 0, 0, 0, 0, 0, 0, 0, 0, 0));
-  EXPECT_THAT(rowadrT, ElementsAre(0, 0, 0, 0, 0, 0, 0, 0, 0, 0));
+    EXPECT_THAT(rownnzT, ElementsAre(0, 0, 0, 0, 0, 0, 0, 0, 0, 0));
+    EXPECT_THAT(rowadrT, ElementsAre(0, 0, 0, 0, 0, 0, 0, 0, 0, 0));
+  }
 }
 
 TEST_F(EngineUtilSparseTest, MjuCompressSparse) {
@@ -938,7 +1146,7 @@ TEST_F(EngineUtilSparseTest, MjuSqrMatTDSparseSymbolic) {
   int rownnzT[2];
   int rowadrT[2];
   mju_transposeSparse(matT, mat, 2, 2, rownnzT, rowadrT, colindT, nullptr,
-                      rownnz, rowadr, colind);
+                      rownnz, rowadr, colind, nullptr);
 
   // use old function as ground truth
   int rownnzH_expected[] = {0, 0};
@@ -992,7 +1200,7 @@ TEST_F(EngineUtilSparseTest, MjuSqrMatTDSparseSymbolicUpper) {
   int rownnzT[2];
   int rowadrT[2];
   mju_transposeSparse(matT, mat, 2, 2, rownnzT, rowadrT, colindT, nullptr,
-                      rownnz, rowadr, colind);
+                      rownnz, rowadr, colind, nullptr);
 
   // use old function as ground truth with flg_upper=1
   int rownnzH_expected[] = {0, 0};
@@ -1035,7 +1243,7 @@ TEST_F(EngineUtilSparseTest, MjuSqrMatTDSparseSymbolicSupernode) {
   int rownnzT[2];
   int rowadrT[2];
   mju_transposeSparse(matT, mat, 3, 2, rownnzT, rowadrT, colindT, nullptr,
-                      rownnz, rowadr, colind);
+                      rownnz, rowadr, colind, nullptr);
 
   // compute rowsuper and rowsuperT
   int rowsuper[3];
@@ -1129,7 +1337,7 @@ TEST_F(EngineUtilSparseTest, MjuSqrMatTDSparseNumeric) {
   int rownnzT[2];
   int rowadrT[2];
   mju_transposeSparse(matT, mat, 2, 2, rownnzT, rowadrT, colindT, nullptr,
-                      rownnz, rowadr, colind);
+                      rownnz, rowadr, colind, nullptr);
 
   // compute supernodes
   int rowsuperT[2];
@@ -1209,7 +1417,7 @@ TEST_F(EngineUtilSparseTest, MjuSqrMatTDSparseNumeric) {
   mjtNum JT[2];
   int JT_colind[2], JT_rownnz[3], JT_rowadr[3], JT_rowsuper[3];
   mju_transposeSparse(JT, J, 1, 3, JT_rownnz, JT_rowadr, JT_colind, JT_rowsuper,
-                      J_rownnz, J_rowadr, J_colind);
+                      J_rownnz, J_rowadr, J_colind, nullptr);
 
   int H_rownnz[] = {1, 1, 3};
   int H_rowadr[] = {0, 1, 2};
@@ -1427,146 +1635,6 @@ TEST_F(EngineUtilSparseTest, BlockDiagLessCols) {
   mju_blockDiag(res2, mat_p, nc, nc_res, nb, perm_r, perm_c, block_nr, block_nc,
                 block_r, block_c);
   EXPECT_THAT(res2, ElementsAre(1, 2, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0));
-}
-
-TEST_F(EngineUtilSparseTest, BlockDiagSparse) {
-  // 4x5 matrix with 3 blocks
-  constexpr int nr = 4;
-  constexpr int nc = 5;
-  const mjtNum mat[nr * nc] = {1, 2, 0, 0, 0, 0, 0, 3, 4, 0,
-                               0, 0, 5, 6, 0, 0, 0, 0, 0, 7};
-  constexpr int nnz = 7;
-
-  // block structure
-  constexpr int nb = 3;
-  const int block_r[nb] = {0, 1, 3};
-  const int block_c[nb] = {0, 2, 4};
-
-  // convert to sparse
-  int rownnz[nr];
-  int rowadr[nr];
-  int colind[nnz];
-  mjtNum mat_sparse[nnz];
-  mju_dense2sparse(mat_sparse, mat, nr, nc, rownnz, rowadr, colind, nnz);
-
-  // test with identity permutations
-  const int perm_r[nr] = {0, 1, 2, 3};
-  const int perm_c[nc] = {0, 1, 2, 3, 4};
-  int res_rownnz[nr];
-  int res_rowadr[nr];
-  int res_colind[nnz];
-  mjtNum res[nnz];
-  mju_blockDiagSparse(res, res_rownnz, res_rowadr, res_colind, mat_sparse,
-                      rownnz, rowadr, colind, nr, nb, perm_r, perm_c, block_r,
-                      block_c, nullptr, nullptr);
-  mjtNum dense_res[nr * nc];
-  mju_sparse2dense(dense_res, res, nr, nc, res_rownnz, res_rowadr, res_colind);
-  EXPECT_THAT(dense_res, ElementsAre(1, 2, 0, 0, 0, 3, 4, 0, 0, 0, 5, 6, 0, 0,
-                                     0, 7, 0, 0, 0, 0));
-
-  // permute mat into mat_p (scatter rows, gather columns)
-  const int perm_r2[nr] = {3, 1, 0, 2};
-  const int perm_c2[nc] = {4, 0, 2, 1, 3};
-  mjtNum mat_p[nr * nc];
-  PermuteMat(mat_p, mat, nr, nc, perm_r2, perm_c2, true, false);
-  mju_dense2sparse(mat_sparse, mat_p, nr, nc, rownnz, rowadr, colind, nnz);
-
-  // test with permutation
-  mju_blockDiagSparse(res, res_rownnz, res_rowadr, res_colind, mat_sparse,
-                      rownnz, rowadr, colind, nr, nb, perm_r2, perm_c2, block_r,
-                      block_c, nullptr, nullptr);
-  mju_sparse2dense(dense_res, res, nr, nc, res_rownnz, res_rowadr, res_colind);
-  EXPECT_THAT(dense_res, ElementsAre(1, 2, 0, 0, 0, 3, 4, 0, 0, 0, 5, 6, 0, 0,
-                                     0, 7, 0, 0, 0, 0));
-}
-
-TEST_F(EngineUtilSparseTest, BlockDiagSparseTranspose) {
-  // 4x5 matrix with 3 blocks
-  constexpr int nr = 4;
-  constexpr int nc = 5;
-  const mjtNum mat[nr * nc] = {1, 2, 0, 0, 0, 0, 0, 3, 4, 0,
-                               0, 0, 5, 6, 0, 0, 0, 0, 0, 7};
-  constexpr int nnz = 7;
-
-  // block structure
-  constexpr int nb = 3;
-  const int block_nr[nb] = {1, 2, 1};
-  const int block_nc[nb] = {2, 2, 1};
-  const int block_r[nb] = {0, 1, 3};
-  const int block_c[nb] = {0, 2, 4};
-
-  // convert to sparse
-  int rownnz[nr];
-  int rowadr[nr];
-  int colind[nnz];
-  mjtNum mat_sparse[nnz];
-  mju_dense2sparse(mat_sparse, mat, nr, nc, rownnz, rowadr, colind, nnz);
-
-  // block diagonalize
-  const int perm_r[nr] = {0, 1, 2, 3};
-  const int perm_c[nc] = {0, 1, 2, 3, 4};
-  int res_rownnz[nr];
-  int res_rowadr[nr];
-  int res_colind[nnz];
-  mjtNum res[nnz];
-  mju_blockDiagSparse(res, res_rownnz, res_rowadr, res_colind, mat_sparse,
-                      rownnz, rowadr, colind, nr, nb, perm_r, perm_c, block_r,
-                      block_c, nullptr, nullptr);
-
-  // transpose each block
-  mjtNum matT[nnz];
-  int colindT[nnz];
-  int rownnzT[nc];  // Max possible size for rownnzT is nc
-  int rowadrT[nc];
-
-  mjtNum denseT[nr * nc];
-  mjtNum dense_block[nr * nc];
-  mjtNum dense_block_T[nr * nc];
-
-  for (int b = 0; b < nb; ++b) {
-    int bnr = block_nr[b];
-    int bnc = block_nc[b];
-    int r_offset = block_r[b];
-    int c_offset = block_c[b];
-
-    if (bnr == 0 || bnc == 0) continue;
-
-    int block_start_adr = res_rowadr[r_offset];
-
-    // pointers to the start of the current block
-    mjtNum* block_res_vals = res + block_start_adr;
-    int* block_res_rownnz = res_rownnz + r_offset;
-    int* block_res_rowadr = res_rowadr + r_offset;
-    int* block_res_colind = res_colind + block_start_adr;
-
-    mju_transposeSparse(matT, block_res_vals, bnr, bnc, rownnzT, rowadrT,
-                        colindT, nullptr, block_res_rownnz, block_res_rowadr,
-                        block_res_colind);
-
-    // verification:
-    // 1. convert transposed sparse block to dense
-    mju_zero(denseT, bnc * bnr);
-    mju_sparse2dense(denseT, matT, bnc, bnr, rownnzT, rowadrT, colindT);
-
-    // 2. extract original block to dense
-    for (int i = 0; i < bnr; ++i) {
-      for (int j = 0; j < bnc; ++j) {
-        dense_block[i * bnc + j] = mat[(r_offset + i) * nc + (c_offset + j)];
-      }
-    }
-    // 3. manually transpose the original dense block
-    for (int i = 0; i < bnr; ++i) {
-      for (int j = 0; j < bnc; ++j) {
-        dense_block_T[j * bnr + i] = dense_block[i * bnc + j];
-      }
-    }
-
-    // 4. Compare
-    for (int i = 0; i < bnc * bnr; ++i) {
-      EXPECT_EQ(denseT[i], dense_block_T[i])
-          << "block " << b << " element " << i;
-    }
-  }
 }
 
 TEST_F(EngineUtilSparseTest, PermuteMat) {
@@ -1797,6 +1865,91 @@ TEST_F(EngineUtilSparseTest, MjuMinDegreeMultiWordAndAbort) {
   EXPECT_GE(5 * flops_cap, 4 * (flops / 2));
   EXPECT_LT(flops_cap, flops);
   EXPECT_LT(nL_cap, nL);
+}
+
+// Verify mju_sqrMatTDSparseSymbolic with supernodes larger than mjMAXSUPER (8),
+// both non-zero and all-zero colsuper, and both lower-only and full (diagind).
+TEST_F(EngineUtilSparseTest, MjuSqrMatTDSparseSymbolicLargeSupernodes) {
+  MjModelPtr model = LoadModelFromString("<mujoco/>");
+  MjDataPtr data = MakeData(model);
+
+  // build M (nr = 25, nc = 30) with column supernodes of sizes {12, 1, 10, 7}
+  // and row supernodes of sizes {10, 6, 9}, plus an empty column supernode
+  const int nr = 25, nc = 30;
+  std::vector<int> row_blocks = {10, 6, 9};
+  std::vector<int> col_blocks = {12, 1, 10, 7};
+  // block pattern (3 x 4): col block 1 is empty
+  const int pat[3][4] = {{1, 0, 1, 0}, {1, 0, 0, 1}, {0, 0, 1, 1}};
+
+  std::vector<int> rownnz(nr, 0), rowadr(nr, 0), colind;
+  int r0 = 0;
+  for (int rb = 0; rb < 3; rb++) {
+    for (int ra = 0; ra < row_blocks[rb]; ra++) {
+      int r = r0 + ra;
+      rowadr[r] = colind.size();
+      int c0 = 0;
+      for (int cb = 0; cb < 4; cb++) {
+        if (pat[rb][cb]) {
+          for (int ca = 0; ca < col_blocks[cb]; ca++) {
+            colind.push_back(c0 + ca);
+          }
+        }
+        c0 += col_blocks[cb];
+      }
+      rownnz[r] = static_cast<int>(colind.size()) - rowadr[r];
+    }
+    r0 += row_blocks[rb];
+  }
+
+  std::vector<int> rownnzT(nc), rowadrT(nc), colindT(colind.size());
+  std::vector<int> rowsuper(nr), rowsuperT(nc), zero_super(nc, 0);
+  mju_superSparse(nr, rowsuper.data(), rownnz.data(), rowadr.data(),
+                  colind.data());
+  mju_transposeSparse(nullptr, nullptr, nr, nc, rownnzT.data(), rowadrT.data(),
+                      colindT.data(), rowsuperT.data(), rownnz.data(),
+                      rowadr.data(), colind.data(), rowsuper.data());
+  EXPECT_EQ(rowsuperT[0], 11);  // 12-wide supernode (> mjMAXSUPER)
+  EXPECT_EQ(rowsuper[0], 9);    // 10-wide row supernode
+
+  for (int use_upper = 0; use_upper <= 1; use_upper++) {
+    // reference: no supernodes
+    std::vector<int> ref_nnz(nc), ref_adr(nc), ref_diag(nc);
+    int nnz_ref = mju_sqrMatTDSparseSymbolic(
+        ref_nnz.data(), ref_adr.data(), nullptr,
+        use_upper ? ref_diag.data() : nullptr, nr, nc, rownnz.data(),
+        rowadr.data(), colind.data(), nullptr, rownnzT.data(), rowadrT.data(),
+        colindT.data(), nullptr, data.get());
+    std::vector<int> ref_col(nnz_ref, -1);
+    mju_sqrMatTDSparseSymbolic(ref_nnz.data(), ref_adr.data(), ref_col.data(),
+                               use_upper ? ref_diag.data() : nullptr, nr, nc,
+                               rownnz.data(), rowadr.data(), colind.data(),
+                               nullptr, rownnzT.data(), rowadrT.data(),
+                               colindT.data(), nullptr, data.get());
+
+    // test both full supernodes and all-zero colsuper (fast-path drop)
+    for (const int* cs : {rowsuperT.data(), zero_super.data()}) {
+      std::vector<int> got_nnz(nc), got_adr(nc), got_diag(nc);
+      int nnz_got = mju_sqrMatTDSparseSymbolic(
+          got_nnz.data(), got_adr.data(), nullptr,
+          use_upper ? got_diag.data() : nullptr, nr, nc, rownnz.data(),
+          rowadr.data(), colind.data(), rowsuper.data(), rownnzT.data(),
+          rowadrT.data(), colindT.data(), cs, data.get());
+      ASSERT_EQ(nnz_got, nnz_ref);
+      EXPECT_EQ(got_nnz, ref_nnz);
+      EXPECT_EQ(got_adr, ref_adr);
+
+      std::vector<int> got_col(nnz_got, -1);
+      mju_sqrMatTDSparseSymbolic(
+          got_nnz.data(), got_adr.data(), got_col.data(),
+          use_upper ? got_diag.data() : nullptr, nr, nc, rownnz.data(),
+          rowadr.data(), colind.data(), rowsuper.data(), rownnzT.data(),
+          rowadrT.data(), colindT.data(), cs, data.get());
+      EXPECT_EQ(got_col, ref_col);
+      if (use_upper) {
+        EXPECT_EQ(got_diag, ref_diag);
+      }
+    }
+  }
 }
 
 }  // namespace

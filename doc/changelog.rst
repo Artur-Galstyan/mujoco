@@ -12,12 +12,47 @@ General
   yields with a given compliance, so problems with soft constraints remain feasible. The solver can be warmstarted
   from a previous active set. The Hessian can be singular or zero (a linear program).
 
+Engine
+^^^^^^
+
+.. admonition:: Breaking API changes
+   :class: attention
+
+   - Removed the ``H`` field of :ref:`mjContact` and the ``flg_coneHessian`` parameter of :ref:`mj_constraintUpdate`,
+     as the Newton solver now computes closed-form elliptic cone factors directly without materializing ``mjContact.H``.
+     The size of :ref:`mjContact` was reduced from 608 to 320 bytes (from 328 to 184 bytes in single precision).
+
+     **Migration:** Remove uses of ``mjContact.H`` and drop the trailing ``flg_coneHessian`` argument when calling
+     :ref:`mj_constraintUpdate`.
+
+- Optimized :ref:`elliptic friction cone<soCones>` Hessians in the :ref:`Newton solver<soAlgorithms>` using closed-form
+  rank-``(dim - 1)`` factors (~5–30% faster elliptic Newton solves). Thanks to :github:user:`adenzler-nvidia`
+  for proposing the optimization in :doc:`MJWarp <mjwarp/index>` pull request
+  `1879 <https://github.com/google-deepmind/mujoco_warp/pull/1879>`__.
+- Optimized :ref:`spatial tendon<tendon-spatial>` Jacobian computation (:ref:`mj_tendon`) and sparsity
+  (``mjModel.ten_J_colind``) by stopping ancestor walks at the endpoints' lowest common ancestor, skipping shared
+  ancestor DOFs whose contributions cancel (~7–22% faster stepping on MyoSuite musculoskeletal models). Thanks to
+  :github:user:`kaibohex` for identifying the opportunity in :doc:`MJWarp <mjwarp/index>` issue
+  `1733 <https://github.com/google-deepmind/mujoco_warp/issues/1733>`__ and to :github:user:`vishalkotak` for the
+  implementation in :doc:`MJWarp <mjwarp/index>` pull request
+  `2014 <https://github.com/google-deepmind/mujoco_warp/pull/2014>`__.
+
 Deformables
 ^^^^^^^^^^^
+- Fixed effective-metric PCG stalls and spurious ``mjWARN_INERTIA`` warnings on 2D flexes with passive contacts by
+  including fully covered passive flex contacts in the sparse Cholesky preconditioner. Previously, passive flex
+  contacts were omitted from the preconditioner, causing the implicit solve to stall or under-converge on stacked cloth
+  scenes (2.1-2.7x faster on ``drape.xml``; existing models with passive flex contacts can change trajectory due to the
+  more accurate solve).
 - Added ``mjModel.flex_cellempty`` (``nflexcell x 1``) and ``mjModel.flex_celladr``, flagging the empty (pruned) cells
   of interpolated flexes. Points of an interpolated flex, such as contact points, are now evaluated in their active
   cell: their natural cell, or the nearest non-empty cell if it is empty, consistently with the vertex positions
   (``flex_vertcell``). Previously contact weights near pruned cells could weight the pinned nodes of the empty cell.
+- The ``discrete`` :ref:`integrator<option-integrator>` smooth solve for 3D and interpolated
+  :ref:`flexes<deformable-flex>` now uses symmetric Gauss-Seidel (Eisenstat) preconditioning instead of diagonal
+  preconditioning, reusing the assembled stiffness matrix in place with zero extra arena memory. This cuts smooth-solve
+  iterations 2-3x and speeds up stepping by ~15% on ``model/plastic/clay.xml`` and
+  ``model/flex/mechanisms/cantilever.xml`` (up to ~1.9x on unconstrained 3D tetrahedral meshes).
 
 Compiler
 ^^^^^^^^
@@ -38,16 +73,91 @@ Rendering
      ``reflectance="1"`` is a pure mirror regardless of its base color. Previously, reflections were added on top of the
      fully lit diffuse surface, washing out reflections on bright materials.
 
+   - Orthographic free and tracking cameras now derive their vertical view height from the camera distance and
+     :ref:`global/fovy<visual-global-fovy>` (matching the perspective view height at the lookat point) and place the eye
+     behind the model's bounding sphere so zooming scales the view without near-plane clipping. Previously,
+     ``global/fovy`` was used directly as a fixed view height in length units (45 by default), so zooming had no visible
+     effect and toggling orthographic made the view jump. Fixed orthographic cameras
+     (:ref:`camera/fovy<body-camera-fovy>`) are unchanged. In Studio and :ref:`simulate<saSimulate>`, the Free Camera
+     field-of-view control shows the vertical view height in length units while in orthographic mode, and editing it
+     changes the camera distance rather than ``global/fovy``. For these cameras :ref:`mjv_cameraFrustum` now returns a
+     vertical extent that depends on ``mjvCamera.distance``.
+
+     **Migration:** Models that set ``global/fovy`` to a length for an orthographic free camera now render zoomed in.
+     Set ``global/fovy`` back to an angle in degrees (the default is 45); the view height then follows the camera
+     distance.
+
+   - Fixed some Filament-specific rendering options that were not working as intended. **These changes will affect the
+     way all models are rendered by the Filament renderer.**
+
+     - The principal fix was to interpret material RGBA color values as linear colors instead of sRGB colors. This
+       ensures that material colors defined in the model will match any texture colors also defined in the model. For
+       example, the following two materials now appear identical (whereas previously they would not):
+
+       .. code-block:: xml
+
+         <texture name="tex" rgb1="0.1 0.2 0.3" builtin="flat" />
+         <material texture="tex" />
+         <material rgba="0.1 0.2 0.3 1.0" />
+
+       Because the above change can affect any model, other long-standing issues with the default rendering settings
+       were fixed in the same release, so that their impact is concentrated in a single release.
+
+     - The tonal ranges for shadows, midtones, and highlights have been updated to a neutral weight. Previously, the
+       weights were incorrectly set to 1.0, resulting in oversaturated colors. As a result, scenes may now appear
+       darker and light intensities may need to be increased to compensate.
+
+     - The tone mapping and output color spaces for scenes without physical lights are now set to linear space instead
+       of sRGB. (Recall that scenes without physical lights are rendered using a fallback lighting model :ref:`as
+       described here<reFilamentFallbackLighting>`.) Before this change, you may have noticed that such scenes appeared
+       "washed out" when rendered with the filament renderer compared to the classic renderer. To compensate for the
+       darker scenes in these scenarios, the default intensity of the headlight and environment light has also been
+       adjusted.
+
+     - The quality levels of the ambient occlusion settings have been reduced to match filament's recommended defaults.
+       This change is less likely to be noticed visually and was included to improve performance.
+
+     **Migration:** Add the following to your model to revert back to previous defaults:
+
+     .. code-block:: xml
+
+        <custom>
+           <text name="filament.material.base_color_type" data="srgb" />
+           <text name="filament.cg.output_color_space"    data="srgb" />
+           <text name="filament.cg.tone_mapping"          data="pbr_neutral" />
+           <text name="filament.ao.quality"               data="ultra" />
+           <text name="filament.ao.low_pass_filter"       data="ultra" />
+           <text name="filament.ao.upsampling"            data="ultra" />
+           <numeric name="filament.cg.shadows"            data="1 1 1 1" />
+           <numeric name="filament.cg.midtones"           data="1 1 1 1" />
+           <numeric name="filament.cg.highlights"         data="1 1 1 1" />
+           <numeric name="filament.fallback.head_light_intensity" data="100000" />
+           <numeric name="filament.fallback.scene_light_intensity" data="80000" />
+           <numeric name="filament.fallback.environment_light_intensity" data="5000" />
+           <numeric name="filament.fallback.environment_light_diffuse_scale" data="1" />
+        </custom>
+
+     Note that the ``cg.output_color_space``, ``cg.tone_mapping``, and all the ``fallback`` settings are only needed for
+     scenes without physical lights.
+
 - Added :ref:`mjGEOM_DISC<mjtGeom>` rendering-only geom type for flat double-sided discs and annuli
   (``size = [r_out, r_in, 0]``).
+- Added ``mjvOption.offset``, an offset added to simulation coordinates when rendering, so that several simulations of
+  one model can be drawn side by side.
 - Fixed Filament planar reflections leaking geometry behind or crossing the mirror plane by clipping the reflection
   camera at the mirror plane with an oblique near-plane projection (:issue:`3902`).
+- Added ``image_diffuse_scale`` to :ref:`mjrfLightParams` to control the diffuse colour of image based lights.
 
 Python bindings
 ^^^^^^^^^^^^^^^
 - Fixed a memory leak in ``mujoco-core`` (introduced in 4.0.0) where ``import mujoco`` without ``glfw`` installed
   stored the ``ImportError`` in ``mujoco.rendering.classic.gl_context`` and kept every local variable on the importing
   call stack alive for the life of the process (:issue:`3928`, reported by :github:user:`adenzler-nvidia`).
+
+Studio
+^^^^^^
+- Text can now be pasted into text fields of the MuJoCo Studio :ref:`Web Viewer <StudioWebViewers>` with ``Ctrl+V``
+  (``Cmd+V`` on macOS).
 
 Plugins
 ^^^^^^^
@@ -56,6 +166,12 @@ Plugins
   ROS. It is not included in release packages: build it from source and load the resulting shared library with
   :ref:`mj_loadPluginLibrary` before parsing a model, so that URDF and MJCF files can reference ROS package assets
   unchanged. Contribution by :github:user:`noah-wardlow`.
+
+OpenUSD
+^^^^^^^
+- The native C++ :doc:`OpenUSD exporter <OpenUSD/exporting>` and ``LayerSink`` now author ``xformOp:translate``
+  (``double3``) and ``xformOp:orient`` (``quatd``) instead of ``xformOp:transform`` (``matrix4d``), avoiding shear
+  artifacts when USD or external renderers interpolate between time samples.
 
 Version 4.0.1 (November 11, 2026)
 ---------------------------------

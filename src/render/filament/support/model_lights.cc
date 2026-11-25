@@ -100,6 +100,7 @@ static void SetLightColorAndIntensity(mjrfLight* light, const mjModel* model,
 
 ModelLights::ModelLights(mjrfScene* scene, ModelResources* model_resources)
     : scene_(scene), model_resources_(model_resources) {
+  mjv_defaultOption(&vopts_);
   const mjModel* model = model_resources->GetModel();
   shadowsize_ = model->vis.quality.shadowsize;
   fallback_head_light_intensity_ =
@@ -111,6 +112,9 @@ ModelLights::ModelLights(mjrfScene* scene, ModelResources* model_resources)
   fallback_environment_light_intensity_ =
       ReadElement(model, "filament.fallback.environment_light_intensity",
                   fallback_environment_light_intensity_);
+  fallback_environment_light_diffuse_scale_ =
+      ReadElement(model, "filament.fallback.environment_light_diffuse_scale",
+                  fallback_environment_light_diffuse_scale_);
   Prepare();
 }
 
@@ -123,10 +127,6 @@ ModelLights::~ModelLights() {
     mjrf_removeSceneLight(scene_, fallback_ibl_.get());
   }
   fallback_ibl_.reset();
-  if (fallback_directional_) {
-    mjrf_removeSceneLight(scene_, fallback_directional_.get());
-  }
-  fallback_directional_.reset();
 }
 
 void ModelLights::Prepare() {
@@ -141,12 +141,9 @@ void ModelLights::Prepare() {
   shadow_map_size_ = default_shadow_map_size;
 
   bool has_image_based_light = false;
-  bool has_directional_light = false;
   float total_light_intensity = 0.0f;
   for (int i = 0; i < model->nlight; ++i) {
     total_light_intensity += model->light_intensity[i];
-    has_directional_light |= model->light_type[i] == mjLIGHT_DIRECTIONAL;
-
     if (model->light_type[i] == mjLIGHT_IMAGE) {
       mjrfLightParams params;
       mjrf_defaultLightParams(&params);
@@ -180,23 +177,6 @@ void ModelLights::Prepare() {
     }
   }
 
-  // Workaround for an upstream filament bug, present since 1.74.0
-  // (https://github.com/google/filament/issues/10249): under the non-PCF
-  // shadow types (VSM/DPCF/PCSS), a scene where a punctual (spot/point) light
-  // casts shadows renders fully black unless a directional light is also
-  // present. Mere presence suffices: zero intensity, shadows off. Keep
-  // filament's directional slot occupied with an invisible light whenever the
-  // model has no directional light.
-  if (!has_directional_light) {
-    mjrfLightParams params;
-    mjrf_defaultLightParams(&params);
-    params.type = mjLIGHT_DIRECTIONAL;
-    params.cast_shadow = 0;
-    params.intensity = 0.0f;
-    fallback_directional_ = CreateLight(ctx, params);
-    mjrf_addSceneLight(scene_, fallback_directional_.get());
-  }
-
   if (!has_image_based_light && total_light_intensity > 0.0f) {
     // Create a black indirect light to ensure that the skybox is
     // oriented to respect mujoco's Z-up convention.
@@ -220,6 +200,7 @@ void ModelLights::Prepare() {
     params.type = mjLIGHT_IMAGE;
     params.texture = fallback_ibl_texture_.get();
     params.intensity = fallback_environment_light_intensity_;
+    params.image_diffuse_scale = fallback_environment_light_diffuse_scale_;
     fallback_ibl_ = CreateLight(ctx, params);
     mjrf_addSceneLight(scene_, fallback_ibl_.get());
 
@@ -253,6 +234,10 @@ void ModelLights::UpdateShadowMapSize() {
   }
 }
 
+void ModelLights::SetOptions(const mjvOption& opt) {
+  vopts_ = opt;
+}
+
 void ModelLights::Update(const mjData* data) {
   UpdateShadowMapSize();
   if (data == nullptr) {
@@ -264,9 +249,10 @@ void ModelLights::Update(const mjData* data) {
     total_light_intensity += model->light_intensity[i];
   }
 
+  const float3 offset = ReadFloat3(vopts_.offset);
   for (int i = 0; i < model->nlight; ++i) {
     mjrfLight* light = lights_[i].get();
-    const float3 pos = ReadFloat3(data->light_xpos, i);
+    const float3 pos = ReadFloat3(data->light_xpos, i) + offset;
     const float3 dir = ReadFloat3(data->light_xdir, i);
     mjrf_setLightPose(light, pos.v, dir.v);
 

@@ -49,7 +49,6 @@ typedef struct mjContact_ {        // result of collision detection functions
 
   // internal storage used by solver
   mjtNum  mu;                      // friction of regularized cone, set by mj_makeConstraint
-  mjtNum  H[36];                   // cone Hessian, set by mj_constraintUpdate
 
   // contact descriptors set by mj_collideXXX
   int     dim;                     // contact space dimensionality: 1, 3, 4 or 6
@@ -1811,6 +1810,7 @@ typedef struct mjrfLightParams_ {
   float softness;                 // spot light edge softness, fraction of cone angle in [0, 1]
   int shadow_map_size;            // size of shadow map texture, 0 to use default size
   float bulb_radius;              // bulb radius, used for soft shadows
+  float image_diffuse_scale;      // image light diffuse factor, default to 1.0
 } mjrfLightParams;
 typedef struct mjrfMaterial_ {
   float color[4];                 // object color; defaults to white
@@ -3591,6 +3591,7 @@ typedef struct mjvOption_ {          // abstract visualization options
   mjtByte  flags[mjNVISFLAG];        // visualization flags (indexed by mjtVisFlag)
   int      bvh_depth;                // depth of the bounding volume hierarchy to be visualized
   int      flex_layer;               // element layer to be visualized for 3D flex
+  float    offset[3];                // offset added to rendered positions
 } mjvOption;
 typedef struct mjvScene_ {        // abstract scene passed to OpenGL renderer
   // abstract geoms
@@ -4071,8 +4072,7 @@ void mj_makeConstraint(const mjModel* m, mjData* d);
 void mj_island(const mjModel* m, mjData* d);
 void mj_projectConstraint(const mjModel* m, mjData* d);
 void mj_referenceConstraint(const mjModel* m, mjData* d);
-void mj_constraintUpdate(const mjModel* m, mjData* d, const mjtNum* jar,
-                         mjtNum cost[1], int flg_coneHessian);
+void mj_constraintUpdate(const mjModel* m, mjData* d, const mjtNum* jar, mjtNum cost[1]);
 int mj_stateSize(const mjModel* m, int sig);
 void mj_getState(const mjModel* m, const mjData* d, mjtNum* state, int sig);
 void mj_extractState(const mjModel* m, const mjtNum* src, int srcsig,

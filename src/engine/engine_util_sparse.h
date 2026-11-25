@@ -21,7 +21,7 @@
 #include <mujoco/mjdata.h>
 #include <mujoco/mjexport.h>
 #include <mujoco/mjtype.h>
-#include "engine/engine_util_sparse_avx.h"
+#include "engine/engine_simd.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -107,10 +107,14 @@ int mju_addToSparseMat(mjtNum* dst, const mjtNum* src, int n, int nrow, mjtNum s
 int mju_addChains(int* res, int n, int NV1, int NV2,
                   const int* chain1, const int* chain2);
 
-// transpose sparse matrix, optionally compute row supernodes
+// transpose sparse matrix, optionally compute output row supernodes and use input row supernodes
+//   if res is NULL: pattern-only (populate res_colind without copying values)
+//   if res_rownnz is NULL: skip counting pass (and res_rowsuper); res_rowadr must hold
+//     packed, zero-based precomputed row starts on entry (used as write cursors and restored)
 MJAPI void mju_transposeSparse(mjtNum* res, const mjtNum* mat, int nr, int nc,
-                               int* res_rownnz, int* res_rowadr, int* res_colind, int* res_rowsuper,
-                               const int* rownnz, const int* rowadr, const int* colind);
+                               int* res_rownnz, int* res_rowadr, int* res_colind,
+                               int* res_rowsuper, const int* rownnz, const int* rowadr,
+                               const int* colind, const int* rowsuper);
 
 // construct row supernodes
 MJAPI void mju_superSparse(int nr, int* rowsuper,
@@ -174,24 +178,6 @@ MJAPI void mju_blockDiag(mjtNum* res, const mjtNum* mat, int nc_mat, int nc_res,
                          const int* block_nr, const int* block_nc,
                          const int* block_r, const int* block_c);
 
-// extract a single block of a sparse matrix
-MJAPI void mju_blockSparse(
-  mjtNum* res, int* res_rownnz, int* res_rowadr, int* res_colind,
-  const mjtNum* mat, const int* rownnz, const int* rowadr, const int* colind,
-  int nr,
-  const int* perm_r, const int* perm_c,
-  int col_offset, int res_offset,
-  mjtNum* res2, const mjtNum* mat2);
-
-// block-diagonalize a sparse matrix
-MJAPI void mju_blockDiagSparse(
-  mjtNum* res, int* res_rownnz, int* res_rowadr, int* res_colind,
-  const mjtNum* mat, const int* rownnz, const int* rowadr, const int* colind,
-  int nr, int nb,
-  const int* perm_r, const int* perm_c,
-  const int* block_r, const int* block_c,
-  mjtNum* res2, const mjtNum* mat2);
-
 // sort sparse row (colind, val) of length nnz ascending by colind
 MJAPI void mju_sortSparseRow(int nnz, int* colind, mjtNum* val);
 
@@ -240,25 +226,20 @@ int mju_ctz64(uint64_t x) {
 // dot-product, first vector is sparse
 static inline
 mjtNum mju_dotSparse(const mjtNum* vec1, const mjtNum* vec2, int nnz1, const int* ind1) {
-#ifdef mjUSEAVX
-  return mju_dotSparse_avx(vec1, vec2, nnz1, ind1);
-#else
   int i = 0;
   mjtNum res = 0;
   int n_4 = nnz1 - 4;
-  mjtNum res0 = 0;
-  mjtNum res1 = 0;
-  mjtNum res2 = 0;
-  mjtNum res3 = 0;
 
-  for (; i <= n_4; i+=4) {
-    res0 += vec1[i+0] * vec2[ind1[i+0]];
-    res1 += vec1[i+1] * vec2[ind1[i+1]];
-    res2 += vec1[i+2] * vec2[ind1[i+2]];
-    res3 += vec1[i+3] * vec2[ind1[i+3]];
+  // vector part
+  if (n_4 >= 0) {
+    mjtNum4 sum = v4_mul(v4_load(vec1),
+                         v4_set(vec2[ind1[0]], vec2[ind1[1]], vec2[ind1[2]], vec2[ind1[3]]));
+    for (i = 4; i <= n_4; i += 4) {
+      mjtNum4 v2 = v4_set(vec2[ind1[i+0]], vec2[ind1[i+1]], vec2[ind1[i+2]], vec2[ind1[i+3]]);
+      sum = v4_add(sum, v4_mul(v4_load(vec1 + i), v2));
+    }
+    res = v4_sum(sum);
   }
-
-  res = (res0 + res2) + (res1 + res3);
 
   // scalar part
   for (; i < nnz1; i++) {
@@ -266,7 +247,6 @@ mjtNum mju_dotSparse(const mjtNum* vec1, const mjtNum* vec2, int nnz1, const int
   }
 
   return res;
-#endif  // mjUSEAVX
 }
 
 
@@ -274,11 +254,10 @@ mjtNum mju_dotSparse(const mjtNum* vec1, const mjtNum* vec2, int nnz1, const int
 // return 1 if vec1==vec2, 0 otherwise
 static inline
 int mju_compare(const int* vec1, const int* vec2, int n) {
-#ifdef mjUSEAVX
-  return mju_compare_avx(vec1, vec2, n);
-#else
-  return !memcmp(vec1, vec2, n*sizeof(int));
-#endif  // mjUSEAVX
+  if (n <= 0) {
+    return 1;
+  }
+  return !memcmp(vec1, vec2, (size_t)n*sizeof(int));
 }
 
 
@@ -340,13 +319,34 @@ int mj_mergeSorted(int* merge, const int* chain1, int n1, const int* chain2, int
 // res = res*scl1 + vec*scl2
 static inline
 void mju_addToSclScl(mjtNum* res, const mjtNum* vec, mjtNum scl1, mjtNum scl2, int n) {
-#ifdef mjUSEAVX
-  mju_addToSclScl_avx(res, vec, scl1, scl2, n);
-#else
-  for (int i=0; i < n; i++) {
+  int i = 0;
+  int n_4 = n - 4;
+
+  // vector part
+  if (n_4 >= 0) {
+    mjtNum4 sclpar1 = v4_splat(scl1);
+    mjtNum4 sclpar2 = v4_splat(scl2);
+
+    while (i <= n_4) {
+      mjtNum4 val1 = v4_mul(v4_load(res + i), sclpar1);
+      mjtNum4 val2 = v4_mul(v4_load(vec + i), sclpar2);
+      v4_store(res + i, v4_add(val1, val2));
+      i += 4;
+    }
+  }
+
+  // process remaining
+  int n_i = n - i;
+  if (n_i == 3) {
+    res[i] = res[i]*scl1 + vec[i]*scl2;
+    res[i+1] = res[i+1]*scl1 + vec[i+1]*scl2;
+    res[i+2] = res[i+2]*scl1 + vec[i+2]*scl2;
+  } else if (n_i == 2) {
+    res[i] = res[i]*scl1 + vec[i]*scl2;
+    res[i+1] = res[i+1]*scl1 + vec[i+1]*scl2;
+  } else if (n_i == 1) {
     res[i] = res[i]*scl1 + vec[i]*scl2;
   }
-#endif  // mjUSEAVX
 }
 
 

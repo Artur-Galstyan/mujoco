@@ -51,6 +51,20 @@ static void f2f(float* dest, const float* src, int n) {
 }
 
 
+// return whether visualization option has a non-zero offset
+static int hasOffset(const mjvOption* opt) {
+  return opt->offset[0] || opt->offset[1] || opt->offset[2];
+}
+
+
+// add visualization option offset to position
+static void addOffset(float pos[3], const mjvOption* opt) {
+  pos[0] += opt->offset[0];
+  pos[1] += opt->offset[1];
+  pos[2] += opt->offset[2];
+}
+
+
 // make text label
 static void makeLabel(const mjModel* m, mjtObj type, int id, char* label) {
   const char* typestr = mju_type2Str(type);
@@ -571,7 +585,14 @@ void mjv_cameraFrustum(float zver[2], float zhor[2], float zclip[2], const mjMod
   const float znear = m->vis.map.znear * m->stat.extent;
 
   if (orthographic) {
-    if (zver) zver[0] = zver[1] = fovy / 2;
+    if (zver) {
+      if (cam->type == mjCAMERA_FIXED) {
+        zver[0] = zver[1] = fovy / 2;
+      } else {
+        // match the height of the perspective view at the lookat point
+        zver[0] = zver[1] = cam->distance * mju_tan(fovy * mjPI/360.0);
+      }
+    }
     if (zhor) zhor[0] = zhor[1] = 0.0f;
   } else if (intrinsic) {
     getFrustum(zver, zhor, znear, intrinsic, sensorsize);
@@ -584,6 +605,23 @@ void mjv_cameraFrustum(float zver[2], float zhor[2], float zclip[2], const mjMod
     zclip[0] = znear;
     zclip[1] = m->vis.map.zfar * m->stat.extent;
   }
+}
+
+
+// moves the eye of an orthographic free or tracking camera behind the model, extends zfar to match
+void mjv_orthographicEye(mjtNum headpos[3], float zclip[2], const mjModel* m,
+                         const mjtNum lookat[3], const mjtNum forward[3]) {
+  // put the eye one extent behind the model's bounding sphere, wherever the lookat point is, so
+  // that zooming in does not clip the model at the near plane; the sphere comes from the model
+  // statistics, so geometry that moves far from both its center and the lookat point can still end
+  // up behind the eye
+  mjtNum offset[3];
+  mju_sub3(offset, lookat, m->stat.center);
+  mjtNum eye_distance = mju_norm3(offset) + 2.0*m->stat.extent;
+  mju_addScl3(headpos, lookat, forward, -eye_distance);
+
+  // keep the far side of the model in front of the far plane
+  zclip[1] = mjMAX(zclip[1], (float)(2.0*eye_distance));
 }
 
 
@@ -3185,6 +3223,8 @@ void mjv_addGeoms(const mjModel* m, mjData* d, const mjvOption* vopt,
     catmask &= (~mjCAT_STATIC);
   }
 
+  int ngeom_start = scn->ngeom;
+
   addFlexGeoms(m, d, vopt, pert, catmask, scn);
   addSkinGeoms(m, d, vopt, pert, catmask, scn);
   addGeomGeoms(m, d, vopt, pert, catmask, scn);
@@ -3193,33 +3233,38 @@ void mjv_addGeoms(const mjModel* m, mjData* d, const mjvOption* vopt,
   addSliderCrankGeoms(m, d, vopt, catmask, scn);
 
   // remaining functions only add decor elements
-  if (!(catmask & mjCAT_DECOR)) {
-    return;
+  if (catmask & mjCAT_DECOR) {
+    addGeomFrameGeoms(m, d, vopt, catmask, scn);
+    addSiteFrameGeoms(m, d, vopt, catmask, scn);
+    addBodyBvhGeoms(m, d, vopt, scn);
+    addFlexBvhGeoms(m, d, vopt, scn);
+    addMeshBvhGeoms(m, d, vopt, scn);
+    addMeshOctreeGeoms(m, d, vopt, scn);
+    addTactileSensorGeoms(m, d, vopt, scn);
+    addInertiaGeoms(m, d, vopt, pert, catmask, scn);
+    addPerturbGeoms(m, d, vopt, pert, scn);
+    addWorldBodyFrameGeoms(m, d, vopt, catmask, scn);
+    addSelectionPointGeoms(m, d, vopt, pert, scn);
+    addBodyLabelGeoms(m, d, vopt, pert, catmask, scn);
+    addJointGeoms(m, d, vopt, scn);
+    addActuatorGeoms(m, d, vopt, scn);
+    addIslandLabelGeoms(m, d, vopt, scn);
+    addCameraGeoms(m, d, vopt, scn);
+    addLightGeoms(m, d, vopt, scn);
+    addCenterOfMassGeoms(m, d, vopt, scn);
+    addAutoConnectGeoms(m, d, vopt, scn);
+    addRangefinderGeoms(m, d, vopt, scn);
+    addExternalPerturbGeoms(m, d, vopt, scn);
+    addConstraintGeoms(m, d, vopt, scn);
+    addContactGeoms(m, d, vopt, scn, catmask);
   }
 
-  addGeomFrameGeoms(m, d, vopt, catmask, scn);
-  addSiteFrameGeoms(m, d, vopt, catmask, scn);
-  addBodyBvhGeoms(m, d, vopt, scn);
-  addFlexBvhGeoms(m, d, vopt, scn);
-  addMeshBvhGeoms(m, d, vopt, scn);
-  addMeshOctreeGeoms(m, d, vopt, scn);
-  addTactileSensorGeoms(m, d, vopt, scn);
-  addInertiaGeoms(m, d, vopt, pert, catmask, scn);
-  addPerturbGeoms(m, d, vopt, pert, scn);
-  addWorldBodyFrameGeoms(m, d, vopt, catmask, scn);
-  addSelectionPointGeoms(m, d, vopt, pert, scn);
-  addBodyLabelGeoms(m, d, vopt, pert, catmask, scn);
-  addJointGeoms(m, d, vopt, scn);
-  addActuatorGeoms(m, d, vopt, scn);
-  addIslandLabelGeoms(m, d, vopt, scn);
-  addCameraGeoms(m, d, vopt, scn);
-  addLightGeoms(m, d, vopt, scn);
-  addCenterOfMassGeoms(m, d, vopt, scn);
-  addAutoConnectGeoms(m, d, vopt, scn);
-  addRangefinderGeoms(m, d, vopt, scn);
-  addExternalPerturbGeoms(m, d, vopt, scn);
-  addConstraintGeoms(m, d, vopt, scn);
-  addContactGeoms(m, d, vopt, scn, catmask);
+  // apply offset to newly added geoms
+  if (hasOffset(vopt)) {
+    for (int i=ngeom_start; i < scn->ngeom; i++) {
+      addOffset(scn->geoms[i].pos, vopt);
+    }
+  }
 }
 
 
@@ -3345,6 +3390,11 @@ void mjv_updateCamera(const mjModel* m, const mjData* d, mjvCamera* cam, mjvScen
 
   default:
     mjERROR("unknown camera type");
+  }
+
+  // move the eye of an orthographic free or tracking camera behind the model
+  if (orthographic && (cam->type == mjCAMERA_FREE || cam->type == mjCAMERA_TRACKING)) {
+    mjv_orthographicEye(headpos, zclip, m, cam->lookat, forward);
   }
 
   // compute GL cameras
@@ -3653,6 +3703,11 @@ void mjv_updateActiveFlex(const mjModel* m, mjData* d, mjvScene* scn, const mjvO
   for (int v=0; v < 3*m->nflexvert; v++) {
     scn->flexvert[v] = (float) d->flexvert_xpos[v];
   }
+  if (hasOffset(opt)) {
+    for (int v=0; v < m->nflexvert; v++) {
+      addOffset(scn->flexvert + 3*v, opt);
+    }
+  }
 
   // construct faces
   mj_markStack(d);
@@ -3871,6 +3926,14 @@ void mjv_updateActiveFlex(const mjModel* m, mjData* d, mjvScene* scn, const mjvO
       mju_error("too many flex faces in mjv_updateActiveFlex");
     }
 
+    // apply offset to face vertices
+    if (hasOffset(opt)) {
+      int nvert = 3 * scn->flexfaceused[f];
+      for (int v=0; v < nvert; v++) {
+        addOffset(face + 3*v, opt);
+      }
+    }
+
     // record per-material face offset and count on multi-material flex geoms
     if (nmat > 1) {
       for (int g=0; g < scn->ngeom; g++) {
@@ -4019,6 +4082,13 @@ void mjv_updateActiveSkin(const mjModel* m, const mjData* d, mjvScene* scn, cons
           scn->skinvert[3*k+2] += inflate*scn->skinnormal[3*k+2];
         }
       }
+
+      // apply offset
+      if (hasOffset(opt)) {
+        for (int k=vertadr; k < vertadr+vertnum; k++) {
+          addOffset(scn->skinvert + 3*k, opt);
+        }
+      }
     }
   }
 }
@@ -4044,6 +4114,11 @@ void mjv_updateScene(const mjModel* m, mjData* d, const mjvOption* opt,
         plugin->visualize(m, d, opt, scn, i);
       }
     }
+    if (hasOffset(opt)) {
+      for (int i=0; i < scn->ngeom; i++) {
+        addOffset(scn->geoms[i].pos, opt);
+      }
+    }
   }
 
   // add all categories
@@ -4052,8 +4127,15 @@ void mjv_updateScene(const mjModel* m, mjData* d, const mjvOption* opt,
   // update camera
   mjv_updateCamera(m, d, cam, scn);
 
-  // add lights
+  // add lights; offset is applied here because mjv_makeLights takes no options
   mjv_makeLights(m, d, scn);
+  if (hasOffset(opt)) {
+    for (int i=0; i < scn->nlight; i++) {
+      if (!scn->lights[i].headlight) {
+        addOffset(scn->lights[i].pos, opt);
+      }
+    }
+  }
 
   // update flexes
   if (opt->flags[mjVIS_FLEXVERT] || opt->flags[mjVIS_FLEXEDGE] ||

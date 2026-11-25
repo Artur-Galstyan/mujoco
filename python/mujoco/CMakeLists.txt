@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-project(mujoco_python)
 cmake_minimum_required(VERSION 3.15)
+project(mujoco_python)
 
 option(MUJOCO_PYTHON_BUILD_CORE "Build core MuJoCo Python extensions." ON)
 option(MUJOCO_PYTHON_BUILD_STUDIO "Build Studio and Filament Python extensions." OFF)
@@ -63,7 +63,16 @@ list(FILTER EXTRA_LINK_OPTIONS EXCLUDE REGEX "stack")
 add_link_options(${EXTRA_LINK_OPTIONS})
 
 include(MujocoMacOS)
-enforce_mujoco_macosx_min_version()
+if(MUJOCO_PYTHON_BUILD_STUDIO)
+  # Omit -Wl,-no_weak_imports when linking Studio/Filament extensions: Filament
+  # and SDL2 use guarded @available(...) checks that emit weak references.
+  if(APPLE)
+    add_compile_options(${MUJOCO_MACOS_COMPILE_OPTIONS})
+    add_link_options(-mmacosx-version-min=${MUJOCO_MACOSX_VERSION_MIN})
+  endif()
+else()
+  enforce_mujoco_macosx_min_version()
+endif()
 
 if(WIN32)
   add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
@@ -506,7 +515,6 @@ if(MUJOCO_PYTHON_BUILD_CORE)
     PRIVATE crossplatform
             enum_traits
             mujoco
-            tuple_tools
   )
 
   mujoco_pybind11_module(_errors errors.cc)

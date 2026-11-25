@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <cfloat>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <sstream>
@@ -25,66 +26,9 @@
 #include <vector>
 
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <implot.h>
 #include <mujoco/mujoco.h>
-
-#if defined(__EMSCRIPTEN__)
-  #include <emscripten/em_js.h>
-
-// Writes text to the browser's clipboard, which only JavaScript can reach.
-// clang-format off
-EM_JS(void, WriteBrowserClipboard, (const char* text), {
-  const str = UTF8ToString(text);
-  // Selects the text in an off-screen textarea and copies the selection, giving
-  // keyboard focus back to whatever had it, normally the canvas.
-  const copyWithExecCommand = () => {
-    if (typeof document === "undefined" || !document.body) {
-      return false;
-    }
-    const focused = document.activeElement;
-    const textarea = document.createElement("textarea");
-    textarea.value = str;
-    textarea.setAttribute("readonly", "");
-    textarea.style.position = "fixed";
-    textarea.style.left = "-9999px";
-    document.body.appendChild(textarea);
-    textarea.focus();
-    textarea.select();
-    let copied = false;
-    try {
-      copied = document.execCommand("copy");
-    } catch (error) {
-      copied = false;
-    }
-    document.body.removeChild(textarea);
-    if (focused && focused.focus) {
-      focused.focus();
-    }
-    return copied;
-  };
-  // Prefer the asynchronous Clipboard API, which browsers only expose in secure
-  // contexts (https or localhost) and with a recent user gesture.
-  if (typeof navigator !== "undefined" && navigator.clipboard &&
-      navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(str).catch((error) => {
-      // Fall back to execCommand("copy") if writeText refuses, e.g. because the
-      // document is not focused or the user gesture expired.
-      if (!copyWithExecCommand()) {
-        console.warn("Copy to clipboard failed:", error);
-      }
-    });
-    return;
-  }
-  // Fall back to the deprecated execCommand("copy") when the Clipboard API is
-  // missing, e.g. the WebViewer served over plain http (still needs a recent
-  // user gesture).
-  if (!copyWithExecCommand()) {
-    console.warn("Copy to clipboard failed: the Clipboard API needs https or " +
-                 "localhost, and execCommand('copy') was refused.");
-  }
-});
-// clang-format on
-#endif  // defined(__EMSCRIPTEN__)
 
 namespace mujoco::studio {
 
@@ -427,16 +371,6 @@ void ImGui_EndHSplit(bool open) {
   }
 }
 
-void MaybeSaveToClipboard(const std::string& contents) {
-  // ImGui's platform clipboard, which in-app paste reads. In the browser builds
-  // this is only SDL's internal buffer, since SDL's Emscripten port has no
-  // clipboard, so also write the browser's clipboard there.
-  ImGui::SetClipboardText(contents.c_str());
-#if defined(__EMSCRIPTEN__)
-  WriteBrowserClipboard(contents.c_str());
-#endif
-}
-
 float GetExpectedLabelWidth() {
   static float expected_label_width = 0;
   if (expected_label_width == 0) {
@@ -531,25 +465,43 @@ void DrawTextAt(const char* text, float x, float y, float z) {
 }
 
 void DrawTextAtInRect(const char* text, float x, float y, float z, const ImVec4& rect) {
-  if (x < -1 || y < -1 || x > 1 || y > 1 || z < -1 || z > 1) {
+  if (text == nullptr || text[0] == '\0' || rect.z <= 0.0f || rect.w <= 0.0f) {
+    return;
+  }
+  // Negated bounds checks also reject NaNs.
+  if (!(x >= -1.0f && x <= 1.0f && y >= -1.0f && y <= 1.0f && z >= -1.0f && z <= 1.0f)) {
     return;
   }
 
   const ImVec2 center_pos = ClipSpaceToRectCoordinates(x, y, rect);
   const ImVec2 size = ImGui::CalcTextSize(text);
+  const ImVec2 pos(center_pos.x - size.x * 0.5f, center_pos.y);
+  const ImVec2 shadow_pos(pos.x + 2.0f, pos.y + 2.0f);
 
-  const ImVec2 pos = ImVec2(center_pos.x - size.x / 2, center_pos.y);
-  const ImVec2 shadow_pos = ImVec2(pos.x + 2, pos.y + 2);
-  const int flags = ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoFocusOnAppearing |
-                    ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoDecoration |
-                    ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNav;
+  constexpr ImGuiWindowFlags kFlags =
+      ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoFocusOnAppearing |
+      ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs |
+      ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDocking |
+      ImGuiWindowFlags_NoSavedSettings;
 
-  ImGui::Begin("labels", nullptr, flags);
-  ImGui::BeginChild("labels", ImGui::GetIO().DisplaySize, 0, flags);
-  ImDrawList* draw_list = ImGui::GetWindowDrawList();
-  draw_list->AddText(shadow_pos, IM_COL32_BLACK, text);
-  draw_list->AddText(pos, IM_COL32_WHITE, text);
-  ImGui::EndChild();
+  const ImGuiViewport* viewport = ImGui::GetMainViewport();
+  ImGui::SetNextWindowPos(viewport->Pos, ImGuiCond_Always);
+  ImGui::SetNextWindowSize(viewport->Size, ImGuiCond_Always);
+
+  // Keep the window name "labels": web_client.cc matches list->_OwnerName
+  // against "labels" so 3D scene labels stay behind streamed remote UI.
+  if (ImGui::Begin("labels", nullptr, kFlags)) {
+    ImGuiWindow* win = ImGui::GetCurrentWindow();
+    if (GImGui->Windows[0] != win) {
+      ImGui::BringWindowToDisplayBack(win);
+    }
+    ImDrawList* draw_list = ImGui::GetWindowDrawList();
+    draw_list->PushClipRect(ImVec2(rect.x, rect.y), ImVec2(rect.x + rect.z, rect.y + rect.w),
+                            false);
+    draw_list->AddText(shadow_pos, IM_COL32_BLACK, text);
+    draw_list->AddText(pos, IM_COL32_WHITE, text);
+    draw_list->PopClipRect();
+  }
   ImGui::End();
 }
 namespace {
@@ -648,6 +600,46 @@ void TextOverlay(const char* id, OverlayPos pos, ImVec4 workspace_rect, const ch
     }
   }
   EndOverlay();
+}
+
+void StripUnconsumedTouchMousePress() {
+  ImGuiContext* ctx = ImGui::GetCurrentContext();
+  if (ctx == nullptr || ctx->IO.MouseDown[ImGuiMouseButton_Left]) {
+    return;
+  }
+  int dst = 0;
+  for (int src = 0; src < ctx->InputEventsQueue.Size; ++src) {
+    const ImGuiInputEvent& ev = ctx->InputEventsQueue[src];
+    if (ev.Type == ImGuiInputEventType_MouseButton &&
+        ev.MouseButton.Button == ImGuiMouseButton_Left) {
+      continue;
+    }
+    if (dst != src) {
+      ctx->InputEventsQueue[dst] = ev;
+    }
+    ++dst;
+  }
+  ctx->InputEventsQueue.resize(dst);
+}
+
+bool HitTestImGuiWindows(ImVec2 pos) {
+  ImGuiContext* ctx = ImGui::GetCurrentContext();
+  if (ctx == nullptr) {
+    return false;
+  }
+  const ImGuiContext& g = *ctx;
+  if (g.IO.ConfigFlags & ImGuiConfigFlags_NoMouse) {
+    return false;
+  }
+  if (g.OpenPopupStack.Size > 0 || ImGui::GetTopMostPopupModal() != nullptr) {
+    return true;
+  }
+  if (!std::isfinite(pos.x) || !std::isfinite(pos.y)) {
+    return false;
+  }
+  ImGuiWindow* hovered = nullptr;
+  ImGui::FindHoveredWindowEx(pos, /*find_first_and_in_any_viewport=*/true, &hovered, nullptr);
+  return hovered != nullptr;
 }
 
 }  // namespace mujoco::studio

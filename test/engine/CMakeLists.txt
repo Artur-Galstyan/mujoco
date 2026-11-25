@@ -58,6 +58,8 @@ mujoco_test(engine_io_test ADDITIONAL_LINK_LIBRARIES absl::str_format)
 
 mujoco_test(engine_ipc_test)
 
+mujoco_test(engine_metric_test)
+
 mujoco_test(
   engine_plugin_test
   ADDITIONAL_LINK_LIBRARIES
@@ -83,6 +85,11 @@ mujoco_test(engine_sensor_test)
 mujoco_test(engine_setconst_test)
 
 mujoco_test(engine_simd_test)
+target_compile_options(
+  engine_simd_test
+  PRIVATE ${AVX_COMPILE_OPTIONS}
+          $<$<CXX_COMPILER_ID:GNU>:-Wno-psabi>
+)
 
 mujoco_test(engine_sleep_test)
 

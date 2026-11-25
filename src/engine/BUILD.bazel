@@ -58,7 +58,13 @@ _C_CONLYOPTS = [
     "-Wunused",
     "-Wvla",
     "-Wimplicit-fallthrough",
-]
+] + select({
+    "@platforms//os:windows": [],
+    "//conditions:default": [
+        "-fno-math-errno",
+        "-Wno-psabi",
+    ],
+})
 
 cc_library(
     name = "engine",
@@ -258,9 +264,11 @@ cc_library(
     deps = [
         ":engine_core",
         ":engine_core_util",
+        ":engine_crossplatform",
         ":engine_derivative",
-        ":engine_macro",
+        ":engine_inline",
         ":engine_memory",
+        ":engine_simd",
         ":engine_util_blas",
         ":engine_util_errmem",
         ":engine_util_misc",
@@ -433,6 +441,7 @@ cc_library(
         "_GNU_SOURCE",
     ],
     deps = [
+        ":engine_inline",
         ":engine_memory",
         ":engine_plugin",
         ":engine_util_blas",
@@ -479,12 +488,14 @@ cc_library(
         ":engine_inline",
         ":engine_macro",
         ":engine_memory",
+        ":engine_simd",
         ":engine_sleep",
         ":engine_sort",
         ":engine_thread",
         ":engine_util_blas",
         ":engine_util_errmem",
         ":engine_util_misc",
+        ":engine_util_sparse",
         ":engine_util_spatial",
         "//:libmujoco_hdrs",
     ],
@@ -524,10 +535,12 @@ cc_library(
     srcs = [
         "engine_collision_convex.c",
         "engine_collision_gjk.c",
+        "engine_collision_nonconvex.c",
     ],
     hdrs = [
         "engine_collision_convex.h",
         "engine_collision_gjk.h",
+        "engine_collision_nonconvex.h",
     ],
     conlyopts = _C_CONLYOPTS + ["-std=c11"],
     copts = [
@@ -703,6 +716,7 @@ cc_library(
     ],
     deps = [
         ":engine_collision_primitive",
+        ":engine_crossplatform",
         ":engine_inline",
         ":engine_memory",
         ":engine_util_blas",
@@ -746,6 +760,7 @@ cc_library(
         ":engine_inline",
         ":engine_macro",
         ":engine_memory",
+        ":engine_simd",
         ":engine_sleep",
         ":engine_util_blas",
         ":engine_util_errmem",
@@ -780,7 +795,6 @@ cc_library(
         ":engine_memory",
         ":engine_util_errmem",
         ":engine_util_misc",
-        ":engine_util_sparse",
         "//:libmujoco_hdrs",
     ],
 )
@@ -808,8 +822,8 @@ cc_library(
         ":engine_collision",
         ":engine_collision_convex",
         ":engine_collision_primitive",
-        ":engine_core_util",
         ":engine_crossplatform",
+        ":engine_inline",
         ":engine_memory",
         ":engine_util_blas",
         ":engine_util_errmem",
@@ -1170,10 +1184,7 @@ cc_library(
 cc_library(
     name = "engine_util_blas",
     srcs = ["engine_util_blas.c"],
-    hdrs = [
-        "engine_util_blas.h",
-        "engine_util_blas_avx.h",
-    ],
+    hdrs = ["engine_util_blas.h"],
     conlyopts = _C_CONLYOPTS + ["-std=c11"],
     copts = [
         "-I" + MJ_ROOT + "/src",
@@ -1258,10 +1269,7 @@ cc_library(
     srcs = [
         "engine_util_sparse.c",
     ],
-    hdrs = [
-        "engine_util_sparse.h",
-        "engine_util_sparse_avx.h",
-    ],
+    hdrs = ["engine_util_sparse.h"],
     conlyopts = _C_CONLYOPTS + ["-std=c11"],
     copts = [
         "-I" + MJ_ROOT + "/src",
@@ -1307,7 +1315,9 @@ cc_library(
         "_GNU_SOURCE",
     ],
     deps = [
+        ":engine_crossplatform",
         ":engine_inline",
+        ":engine_simd",
         ":engine_util_blas",
         ":engine_util_errmem",
         "//:mjtype_hdrs",
@@ -1335,23 +1345,19 @@ cc_library(
     ],
     deps = [
         ":engine_crossplatform",
-        ":engine_inline",
         ":engine_memory",
+        ":engine_simd",
         ":engine_util_blas",
         ":engine_util_errmem",
         ":engine_util_misc",
         ":engine_util_sparse",
-        ":engine_util_spatial",
         "//:libmujoco_hdrs",
     ],
 )
 
 cc_library(
     name = "engine_inline",
-    hdrs = [
-        "engine_inline.h",
-        "engine_util_spatial_avx.h",
-    ],
+    hdrs = ["engine_inline.h"],
     conlyopts = ["-std=c11"],
     copts = [
         "-I" + MJ_ROOT + "/src",

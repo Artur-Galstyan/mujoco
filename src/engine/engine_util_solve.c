@@ -19,13 +19,12 @@
 #include <mujoco/mjdata.h>
 #include <mujoco/mjsan.h>  // IWYU pragma: keep
 #include "engine/engine_crossplatform.h"
-#include "engine/engine_inline.h"
+#include "engine/engine_memory.h"
+#include "engine/engine_simd.h"
 #include "engine/engine_util_blas.h"
 #include "engine/engine_util_errmem.h"
 #include "engine/engine_util_misc.h"
 #include "engine/engine_util_sparse.h"
-#include "engine/engine_memory.h"
-#include "engine/engine_util_spatial.h"
 
 //---------------------------- dense Cholesky ------------------------------------------------------
 
@@ -72,30 +71,182 @@ int mju_cholFactor(mjtNum* restrict mat, int n, mjtNum mindiag) {
 
 // Cholesky solve
 void mju_cholSolve(mjtNum* res, const mjtNum* restrict mat, const mjtNum* vec, int n) {
+  // nothing to do
+  if (n <= 0) {
+    return;
+  }
+
   // copy if source and destination are different
   if (res != vec) {
     mju_copy(res, vec, n);
   }
 
-  // forward substitution: solve L*res = vec
-  for (int i=0; i < n; i++) {
+  // 4-row blocking parameters (n4 is multiple of 4, rem in 0..3)
+  const mjtNum4 one = v4_splat(1);
+  const size_t sn = n;
+  const int n4 = n & ~3;
+  const int rem = n - n4;
+  mjtNum4 last_inv = one;
+
+  // forward substitution: solve L*res = vec (4-row blocked with parallel diagonal reciprocals)
+  //   scalar equivalent:
+  //     for (int i=0; i < n; i++) {
+  //       if (i) res[i] -= mju_dot(mat+i*n, res, i);
+  //       res[i] /= mat[i*(n+1)];
+  //     }
+  for (int i=0; i < n4; i += 4) {
+    const mjtNum* restrict r0 = mat + (i+0)*sn;
+    const mjtNum* restrict r1 = mat + (i+1)*sn;
+    const mjtNum* restrict r2 = mat + (i+2)*sn;
+    const mjtNum* restrict r3 = mat + (i+3)*sn;
+
+    // diagonal reciprocals overlapped with off-diagonal dot products
+    mjtNum4 inv = v4_div(one, v4_set(r0[i+0], r1[i+1], r2[i+2], r3[i+3]));
+    last_inv = inv;
+
     // off-diagonal
+    mjtNum b[4];
     if (i) {
-      res[i] -= mju_dot(mat+i*n, res, i);
+      mjtNum4 s0 = v4_splat(0), s1 = v4_splat(0), s2 = v4_splat(0), s3 = v4_splat(0);
+      for (int k=0; k < i; k += 4) {
+        mjtNum4 v = v4_load(res+k);
+        s0 = v4_add(s0, v4_mul(v4_load(r0+k), v));
+        s1 = v4_add(s1, v4_mul(v4_load(r1+k), v));
+        s2 = v4_add(s2, v4_mul(v4_load(r2+k), v));
+        s3 = v4_add(s3, v4_mul(v4_load(r3+k), v));
+      }
+
+      // reduce partial sums and subtract from rhs
+      v4_transpose(&s0, &s1, &s2, &s3);
+      mjtNum4 sums = v4_add(v4_add(s0, s2), v4_add(s1, s3));
+      v4_store(b, v4_sub(v4_load(res+i), sums));
+    } else {
+      v4_store(b, v4_load(res+i));
     }
 
-    // diagonal
-    res[i] /= mat[i*(n+1)];
+    // diagonal: solve 4x4 lower-triangular block
+    mjtNum inv_d[4];
+    v4_store(inv_d, inv);
+    mjtNum x0 = b[0] * inv_d[0];
+    mjtNum x1 = (b[1] - r1[i+0]*x0) * inv_d[1];
+    mjtNum x2 = (b[2] - r2[i+0]*x0 - r2[i+1]*x1) * inv_d[2];
+    mjtNum x3 = (b[3] - r3[i+0]*x0 - r3[i+1]*x1 - r3[i+2]*x2) * inv_d[3];
+    v4_store(res+i, v4_set(x0, x1, x2, x3));
+  }
+
+  // forward tail (1..3 rows); reuse diagonal reciprocals in backward tail
+  mjtNum inv_tail[4] = {0, 0, 0, 0};
+  if (rem) {
+    const mjtNum* restrict r0 = mat + (n4+0)*sn;
+    const mjtNum* restrict r1 = rem > 1 ? mat + (n4+1)*sn : NULL;
+    const mjtNum* restrict r2 = rem > 2 ? mat + (n4+2)*sn : NULL;
+
+    // diagonal reciprocals
+    mjtNum4 inv = v4_div(one, v4_set(r0[n4], rem > 1 ? r1[n4+1] : 1, rem > 2 ? r2[n4+2] : 1, 1));
+
+    // off-diagonal
+    mjtNum b0 = res[n4];
+    mjtNum b1 = rem > 1 ? res[n4+1] : 0;
+    mjtNum b2 = rem > 2 ? res[n4+2] : 0;
+    if (n4) {
+      mjtNum4 s0 = v4_splat(0), s1 = v4_splat(0), s2 = v4_splat(0);
+      for (int k=0; k < n4; k += 4) {
+        mjtNum4 v = v4_load(res+k);
+        s0 = v4_add(s0, v4_mul(v4_load(r0+k), v));
+        if (rem > 1) s1 = v4_add(s1, v4_mul(v4_load(r1+k), v));
+        if (rem > 2) s2 = v4_add(s2, v4_mul(v4_load(r2+k), v));
+      }
+      b0 -= v4_sum(s0);
+      if (rem > 1) b1 -= v4_sum(s1);
+      if (rem > 2) b2 -= v4_sum(s2);
+    }
+
+    // diagonal: solve 1..3-row lower-triangular tail
+    v4_store(inv_tail, inv);
+    mjtNum x0 = b0 * inv_tail[0];
+    res[n4] = x0;
+    if (rem > 1) {
+      mjtNum x1 = (b1 - r1[n4]*x0) * inv_tail[1];
+      res[n4+1] = x1;
+      if (rem > 2) {
+        res[n4+2] = (b2 - r2[n4]*x0 - r2[n4+1]*x1) * inv_tail[2];
+      }
+    }
   }
 
   // backward substitution: solve L'*res = res
-  for (int i=n-1; i >= 0; i--) {
-    // diagonal
-    res[i] /= mat[i*(n+1)];
+  //   scalar equivalent:
+  //     for (int i=n-1; i >= 0; i--) {
+  //       res[i] /= mat[i*(n+1)];
+  //       if (i && res[i]) mju_addToScl(res, mat+i*n, -res[i], i);
+  //     }
 
-    // update res[0..i-1] with row i of L
-    if (i && res[i]) {
-      mju_addToScl(res, mat+i*n, -res[i], i);
+  // backward tail (1..3 rows)
+  if (rem) {
+    const mjtNum* restrict r0 = mat + (n4+0)*sn;
+    const mjtNum* restrict r1 = rem > 1 ? mat + (n4+1)*sn : NULL;
+    const mjtNum* restrict r2 = rem > 2 ? mat + (n4+2)*sn : NULL;
+
+    // diagonal: solve 1..3-row upper-triangular tail
+    mjtNum x2 = 0, x1 = 0;
+    if (rem > 2) {
+      x2 = res[n4+2] * inv_tail[2];
+      res[n4+2] = x2;
+    }
+    if (rem > 1) {
+      x1 = (res[n4+1] - (rem > 2 ? r2[n4+1]*x2 : 0)) * inv_tail[1];
+      res[n4+1] = x1;
+    }
+    mjtNum x0 = (res[n4] - (rem > 2 ? r2[n4]*x2 : 0) - (rem > 1 ? r1[n4]*x1 : 0)) * inv_tail[0];
+    res[n4] = x0;
+
+    // update res[0..n4-1] with tail rows of L
+    if (n4 && (x0 || x1 || x2)) {
+      mjtNum4 vx0 = v4_splat(x0), vx1 = v4_splat(x1), vx2 = v4_splat(x2);
+      for (int k=0; k < n4; k += 4) {
+        mjtNum4 r = v4_load(res+k);
+        if (rem > 2) r = v4_sub(r, v4_mul(v4_load(r2+k), vx2));
+        if (rem > 1) r = v4_sub(r, v4_mul(v4_load(r1+k), vx1));
+        r = v4_sub(r, v4_mul(v4_load(r0+k), vx0));
+        v4_store(res+k, r);
+      }
+    }
+  }
+
+  // backward 4-row blocks: software-pipeline diagonal reciprocals across blocks
+  mjtNum4 cur_inv = last_inv;
+  for (int i=n4-4; i >= 0; i -= 4) {
+    const mjtNum* restrict r0 = mat + (i+0)*sn;
+    const mjtNum* restrict r1 = mat + (i+1)*sn;
+    const mjtNum* restrict r2 = mat + (i+2)*sn;
+    const mjtNum* restrict r3 = mat + (i+3)*sn;
+
+    // diagonal: solve 4x4 upper-triangular block
+    mjtNum inv_d[4];
+    v4_store(inv_d, cur_inv);
+    mjtNum x3 = res[i+3] * inv_d[3];
+    mjtNum x2 = (res[i+2] - r3[i+2]*x3) * inv_d[2];
+    mjtNum x1 = (res[i+1] - r3[i+1]*x3 - r2[i+1]*x2) * inv_d[1];
+    mjtNum x0 = (res[i+0] - r3[i+0]*x3 - r2[i+0]*x2 - r1[i+0]*x1) * inv_d[0];
+    v4_store(res+i, v4_set(x0, x1, x2, x3));
+
+    // update res[0..i-1] with rows i..i+3 of L
+    if (i) {
+      // prefetch reciprocals for next block
+      const mjtNum* p0 = mat + (i-4)*sn;
+      cur_inv = v4_div(one, v4_set(p0[i-4], p0[sn+i-3], p0[2*sn+i-2], p0[3*sn+i-1]));
+
+      // subtract scaled rows if any entry is nonzero
+      if (x0 || x1 || x2 || x3) {
+        mjtNum4 vx0 = v4_splat(x0), vx1 = v4_splat(x1);
+        mjtNum4 vx2 = v4_splat(x2), vx3 = v4_splat(x3);
+        for (int k=0; k < i; k += 4) {
+          mjtNum4 r = v4_load(res+k);
+          mjtNum4 t32 = v4_add(v4_mul(v4_load(r3+k), vx3), v4_mul(v4_load(r2+k), vx2));
+          mjtNum4 t10 = v4_add(v4_mul(v4_load(r1+k), vx1), v4_mul(v4_load(r0+k), vx0));
+          v4_store(res+k, v4_sub(r, v4_add(t32, t10)));
+        }
+      }
     }
   }
 }
@@ -104,33 +255,142 @@ void mju_cholSolve(mjtNum* res, const mjtNum* restrict mat, const mjtNum* vec, i
 // Cholesky rank-one update: L*L' +/- x*x'; return rank
 int mju_cholUpdate(mjtNum* restrict mat, mjtNum* restrict x, int n, int flg_plus) {
   int rank = n;
-  mjtNum r, c, cinv, s, Lkk, tmp;
 
   for (int k=0; k < n; k++) {
-    if (x[k]) {
-      // prepare constants
-      Lkk = mat[k*(n+1)];
-      tmp = Lkk*Lkk + (flg_plus ? x[k]*x[k] : -x[k]*x[k]);
-      if (!(tmp >= mjMINVAL)) {
-        tmp = mjMINVAL;
-        rank--;
-      }
-      r = mju_sqrt(tmp);
-      c = r / Lkk;
-      cinv = 1 / c;
-      s = x[k] / Lkk;
-
-      // update diagonal
-      mat[k*(n+1)] = r;
-
-      // update mat and x
-      mjtNum s_signed = flg_plus ? s : -s;
-      for (int i=k+1; i < n; i++) {
-        mjtNum m = (mat[i*n+k] + s_signed*x[i])*cinv;
-        mat[i*n+k] = m;
-        x[i] = c*x[i] - s*m;
-      }
+    // skip zero entry
+    mjtNum xk = x[k];
+    if (!xk) {
+      continue;
     }
+
+    // prepare constants
+    mjtNum Lkk = mat[k*(n+1)];
+    mjtNum tmp = Lkk*Lkk + (flg_plus ? xk*xk : -xk*xk);
+    if (!(tmp >= mjMINVAL)) {
+      tmp = mjMINVAL;
+      rank--;
+    }
+    mjtNum r = mju_sqrt(tmp);
+    mjtNum c0 = r / Lkk;
+    mjtNum cinv0 = 1 / c0;
+    mjtNum s0 = xk / Lkk;
+    mjtNum ss0 = flg_plus ? s0 : -s0;
+
+    // update diagonal
+    mat[k*(n+1)] = r;
+
+    // last column: no subdiagonal rows
+    if (k + 1 >= n) {
+      break;
+    }
+
+    // advance row k+1 with column k so columns k and k+1 can be fused
+    mjtNum* restrict row_k1 = mat + (k+1)*n + k;
+    mjtNum xk1 = x[k+1];
+    mjtNum mk1 = (row_k1[0] + ss0*xk1) * cinv0;
+    row_k1[0] = mk1;
+    xk1 = c0*xk1 - s0*mk1;
+    x[k+1] = xk1;
+
+    int i = k + 2;
+    int n4 = n - 4;
+
+    // x[k+1] is zero: update mat and x for column k only, 4 rows at a time
+    if (!xk1) {
+      for (; i <= n4; i+=4) {
+        mjtNum* restrict col = mat + i*n + k;
+        mjtNum x0 = x[i+0], x1 = x[i+1], x2 = x[i+2], x3 = x[i+3];
+        mjtNum m0 = (col[0]   + ss0*x0) * cinv0;
+        mjtNum m1 = (col[n]   + ss0*x1) * cinv0;
+        mjtNum m2 = (col[2*n] + ss0*x2) * cinv0;
+        mjtNum m3 = (col[3*n] + ss0*x3) * cinv0;
+        col[0]   = m0;
+        col[n]   = m1;
+        col[2*n] = m2;
+        col[3*n] = m3;
+        x[i+0] = c0*x0 - s0*m0;
+        x[i+1] = c0*x1 - s0*m1;
+        x[i+2] = c0*x2 - s0*m2;
+        x[i+3] = c0*x3 - s0*m3;
+      }
+
+      // handle remaining 0..3 rows
+      for (; i < n; i++) {
+        mjtNum* restrict col = mat + i*n + k;
+        mjtNum m0 = (col[0] + ss0*x[i]) * cinv0;
+        col[0] = m0;
+        x[i] = c0*x[i] - s0*m0;
+      }
+
+      // skip column k+1 (already processed)
+      k++;
+      continue;
+    }
+
+    // prepare constants for column k+1
+    mjtNum Lkk1 = row_k1[1];
+    mjtNum tmp1 = Lkk1*Lkk1 + (flg_plus ? xk1*xk1 : -xk1*xk1);
+    if (!(tmp1 >= mjMINVAL)) {
+      tmp1 = mjMINVAL;
+      rank--;
+    }
+    mjtNum r1 = mju_sqrt(tmp1);
+    mjtNum c1 = r1 / Lkk1;
+    mjtNum cinv1 = 1 / c1;
+    mjtNum s1 = xk1 / Lkk1;
+    mjtNum ss1 = flg_plus ? s1 : -s1;
+
+    // update diagonal for column k+1
+    row_k1[1] = r1;
+
+    // update mat and x: fuse columns k and k+1, 4 rows at a time
+    for (; i <= n4; i+=4) {
+      mjtNum* restrict col = mat + i*n + k;
+      mjtNum x0 = x[i+0], x1 = x[i+1], x2 = x[i+2], x3 = x[i+3];
+
+      // apply column k rotation
+      mjtNum m00 = (col[0]   + ss0*x0) * cinv0;
+      mjtNum m10 = (col[n]   + ss0*x1) * cinv0;
+      mjtNum m20 = (col[2*n] + ss0*x2) * cinv0;
+      mjtNum m30 = (col[3*n] + ss0*x3) * cinv0;
+      col[0]   = m00;
+      col[n]   = m10;
+      col[2*n] = m20;
+      col[3*n] = m30;
+      x0 = c0*x0 - s0*m00;
+      x1 = c0*x1 - s0*m10;
+      x2 = c0*x2 - s0*m20;
+      x3 = c0*x3 - s0*m30;
+
+      // apply column k+1 rotation
+      mjtNum m01 = (col[1]     + ss1*x0) * cinv1;
+      mjtNum m11 = (col[n+1]   + ss1*x1) * cinv1;
+      mjtNum m21 = (col[2*n+1] + ss1*x2) * cinv1;
+      mjtNum m31 = (col[3*n+1] + ss1*x3) * cinv1;
+      col[1]     = m01;
+      col[n+1]   = m11;
+      col[2*n+1] = m21;
+      col[3*n+1] = m31;
+      x[i+0] = c1*x0 - s1*m01;
+      x[i+1] = c1*x1 - s1*m11;
+      x[i+2] = c1*x2 - s1*m21;
+      x[i+3] = c1*x3 - s1*m31;
+    }
+
+    // handle remaining 0..3 rows
+    for (; i < n; i++) {
+      mjtNum* restrict col = mat + i*n + k;
+      mjtNum xi = x[i];
+      mjtNum m0 = (col[0] + ss0*xi) * cinv0;
+      col[0] = m0;
+      xi = c0*xi - s0*m0;
+      mjtNum m1 = (col[1] + ss1*xi) * cinv1;
+      col[1] = m1;
+      x[i] = c1*xi - s1*m1;
+    }
+
+    // skip column k+1 (already processed)
+    k++;
   }
 
   return rank;
@@ -212,6 +472,23 @@ static inline int upperStart(const int* colind, int start, int end, int r) {
 }
 
 
+// check if row r-1 has upper-triangle pattern {r} U upper(r)
+static inline int cholUpperMerge(const int* restrict colind, int u_prev, int len_prev,
+                                 int u_cur, int len_cur, int r) {
+  if (len_prev != len_cur + 1 || colind[u_prev] != r) {
+    return 0;
+  }
+  const int* restrict a = colind + u_prev + 1;
+  const int* restrict b = colind + u_cur;
+  for (int k=0; k < len_cur; k++) {
+    if (a[k] != b[k]) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+
 // symbolic reverse-Cholesky: compute both L (CSR) and LT (CSC) structures
 //   if L_colind is NULL, perform counting logic (fill rownnz/rowadr arrays and return total nnz)
 //   if L_colind is not NULL, assume rownnz/rowadr are precomputed and fill colind/map arrays
@@ -222,51 +499,101 @@ int mju_cholFactorSymbolic(int* restrict L_colind, int* restrict L_rownnz, int* 
                            int* restrict LT_rowadr, int* restrict LT_map, int* restrict L_super,
                            const int* restrict rownnz, const int* restrict rowadr,
                            const int* restrict colind, int n, mjData* d) {
+  if (n <= 0) {
+    return 0;
+  }
+
   // d supplies stack scratch; if NULL, scratch is heap-allocated
+  int nscratch = L_colind ? 3*n : 2*n;
   if (d) {
     mj_markStack(d);
   }
-  int* restrict parent = d ? mjSTACKALLOC(d, n, int) : (int*) mju_malloc(sizeof(int)*n);
-  int* restrict flag = d ? mjSTACKALLOC(d, n, int) : (int*) mju_malloc(sizeof(int)*n);
+  int* restrict scratch =
+      d ? mjSTACKALLOC(d, nscratch, int) : (int*) mju_malloc(sizeof(int)*nscratch);
+  int* restrict parent = scratch;
+  int* restrict flag = scratch + n;
 
   // counting phase: fill rownnz/rowadr and return total non-zeros
   if (!L_colind) {
-    // loop over rows in reverse order
-    for (int r=n-1; r >= 0; r--) {
-      parent[r] = -1;
-      flag[r] = r;
+    // reuse L_rowadr during counting to record supernode chain heads (overwritten below)
+    int* restrict chain = L_rowadr;
 
-      // start with 1 for diagonal
-      L_rownnz[r] = 1;
+    // loop over supernode chains [r_start .. r_end] in reverse order
+    for (int r_end=n-1; r_end >= 0; ) {
+      int end_r = rowadr[r_end] + rownnz[r_end];
+      int u_end = upperStart(colind, rowadr[r_end], end_r, r_end);
+      int u_cur = u_end;
+      int len_cur = end_r - u_end;
+
+      // extend chain backward while row r_start-1 has upper pattern {r_start} U upper(r_start)
+      int r_start = r_end;
+      while (r_start > 0) {
+        int r_prev = r_start - 1;
+        int end_p = rowadr[r_prev] + rownnz[r_prev];
+        int u_p = upperStart(colind, rowadr[r_prev], end_p, r_prev);
+        int len_p = end_p - u_p;
+        if (!cholUpperMerge(colind, u_p, len_p, u_cur, len_cur, r_start)) {
+          break;
+        }
+        r_start = r_prev;
+        u_cur = u_p;
+        len_cur = len_p;
+      }
+
+      int s = r_end - r_start + 1;
+      for (int a=0; a < s; a++) {
+        int row = r_start + a;
+        L_rownnz[row] = a + 1;
+        flag[row] = r_end;
+        parent[row] = a > 0 ? row - 1 : -1;
+        chain[row] = row;
+      }
+      chain[r_end] = r_start;
+
+      // walk upper-triangle columns of r_end in reverse so full target chains are entered at tail
       int lt_nnz = 1;
-
-      // loop over non-zero columns of upper triangle (> r)
-      int end = rowadr[r] + rownnz[r];
-      for (int c=upperStart(colind, rowadr[r], end, r); c < end; c++) {
+      for (int c=end_r-1; c >= u_end; c--) {
         int i = colind[c];
 
-        // traverse elimination tree from i toward root, stop when row is already flagged for r
-        while (flag[i] != r) {
-          // count non-zero in L[i, r] and LT[r, i], mark visited, attach unparented root to r
-          L_rownnz[i]++;
-          lt_nnz++;
-          flag[i] = r;
-          int p = parent[i];
-          if (p == -1) {
-            parent[i] = r;
-            break;
+        // traverse elimination tree from i toward root, jumping over unvisited supernode chains
+        while (flag[i] != r_end) {
+          int head = chain[i];
+          if (head < i && flag[head] != r_end) {
+            lt_nnz += i - head + 1;
+            for (int k=head; k <= i; k++) {
+              L_rownnz[k] += s;
+              flag[k] = r_end;
+            }
+            int p = parent[head];
+            if (p == -1) {
+              parent[head] = r_end;
+              break;
+            }
+            i = p;
+          } else {
+            L_rownnz[i] += s;
+            lt_nnz++;
+            flag[i] = r_end;
+            int p = parent[i];
+            if (p == -1) {
+              parent[i] = r_end;
+              break;
+            }
+            i = p;
           }
-          i = p;
         }
       }
-      LT_rownnz[r] = lt_nnz;
+
+      for (int a=0; a < s; a++) {
+        LT_rownnz[r_end-a] = lt_nnz + a;
+      }
+      r_end = r_start - 1;
     }
 
     if (d) {
       mj_freeStack(d);
     } else {
-      mju_free(parent);
-      mju_free(flag);
+      mju_free(scratch);
     }
 
     // compute row addresses, add up total non-zeros
@@ -283,67 +610,151 @@ int mju_cholFactorSymbolic(int* restrict L_colind, int* restrict L_rownnz, int* 
 
   // filling phase: populate L_colind, LT_colind, LT_map and L_super
   // cursor[i] tracks next write slot in row i of L (filled right-to-left as r decreases)
-  int* restrict cursor = d ? mjSTACKALLOC(d, n, int) : (int*) mju_malloc(sizeof(int)*n);
+  int* restrict cursor = scratch + 2*n;
 
-  // loop over rows in reverse order
-  for (int r=n-1; r >= 0; r--) {
-    parent[r] = -1;
-    flag[r] = r;
+  // loop over supernode chains [r_start .. r_end] in reverse order
+  for (int r_end=n-1; r_end >= 0; ) {
+    int end_r = rowadr[r_end] + rownnz[r_end];
+    int u_end = upperStart(colind, rowadr[r_end], end_r, r_end);
+    int u_cur = u_end;
+    int len_cur = end_r - u_end;
 
-    // write L diagonal at end of row r and initialize write cursor just before diagonal
-    int diag_idx = L_rowadr[r] + L_rownnz[r] - 1;
-    cursor[r] = diag_idx - 1;
-    L_colind[diag_idx] = r;
+    // extend chain backward while row r_start-1 has upper pattern {r_start} U upper(r_start)
+    int r_start = r_end;
+    while (r_start > 0) {
+      int r_prev = r_start - 1;
+      int end_p = rowadr[r_prev] + rownnz[r_prev];
+      int u_p = upperStart(colind, rowadr[r_prev], end_p, r_prev);
+      int len_p = end_p - u_p;
+      if (!cholUpperMerge(colind, u_p, len_p, u_cur, len_cur, r_start)) {
+        break;
+      }
+      r_start = r_prev;
+      u_cur = u_p;
+      len_cur = len_p;
+    }
 
-    // write LT diagonal at head of transpose row r
-    int lt_write = LT_rowadr[r];
-    LT_colind[lt_write] = r;
-    LT_map[lt_write] = diag_idx;
+    int s = r_end - r_start + 1;
+
+    // initialize intra-chain L_colind lower triangle, cursors, parent chain, and flags
+    for (int a=0; a < s; a++) {
+      int row = r_start + a;
+      int diag_idx = L_rowadr[row] + L_rownnz[row] - 1;
+      int* restrict dst = L_colind + diag_idx - a;
+      for (int k=0; k <= a; k++) {
+        dst[k] = r_start + k;
+      }
+      cursor[row] = diag_idx - a - 1;
+      parent[row] = a > 0 ? row - 1 : -1;
+      flag[row] = r_start;
+    }
+
+    // write LT diagonal at head of transpose row r_end
+    int lt_write = LT_rowadr[r_end];
+    LT_colind[lt_write] = r_end;
+    LT_map[lt_write] = L_rowadr[r_end] + L_rownnz[r_end] - 1;
     lt_write++;
 
-    // loop over non-zero columns of upper triangle (> r)
-    int end = rowadr[r] + rownnz[r];
+    // walk upper-triangle columns of r_end in forward order (preserves exact LT_colind order)
     int overlap = 0;
-    for (int c=upperStart(colind, rowadr[r], end, r); c < end; c++) {
-      int i = colind[c];
-
-      // traverse elimination tree from i toward root, stop when row is already flagged for r
-      while (flag[i] != r) {
-        // count rows of LT[r+1] (still flagged r+1) that are also in LT[r]
-        overlap += (flag[i] == r + 1);
-
-        // record column r in L[i] and row i (with its L index) in LT[r]
-        int L_idx = cursor[i]--;
-        L_colind[L_idx] = r;
-        LT_colind[lt_write] = i;
-        LT_map[lt_write] = L_idx;
-        lt_write++;
-
-        // mark row i visited for r, advance to parent (or attach unparented root to r)
-        flag[i] = r;
-        int p = parent[i];
-        if (p == -1) {
-          parent[i] = r;
-          break;
+    if (s == 1) {
+      for (int c=u_end; c < end_r; c++) {
+        int i = colind[c];
+        while (flag[i] != r_start) {
+          overlap += (flag[i] == r_end + 1);
+          int L_idx = cursor[i]--;
+          L_colind[L_idx] = r_end;
+          LT_colind[lt_write] = i;
+          LT_map[lt_write] = L_idx;
+          lt_write++;
+          flag[i] = r_start;
+          int p = parent[i];
+          if (p == -1) {
+            parent[i] = r_end;
+            break;
+          }
+          i = p;
         }
-        i = p;
+      }
+    } else if (s == 3) {
+      for (int c=u_end; c < end_r; c++) {
+        int i = colind[c];
+        while (flag[i] != r_start) {
+          overlap += (flag[i] == r_end + 1);
+          int L_idx = cursor[i];
+          cursor[i] = L_idx - 3;
+          L_colind[L_idx-2] = r_start;
+          L_colind[L_idx-1] = r_start + 1;
+          L_colind[L_idx]   = r_end;
+          LT_colind[lt_write] = i;
+          LT_map[lt_write] = L_idx;
+          lt_write++;
+          flag[i] = r_start;
+          int p = parent[i];
+          if (p == -1) {
+            parent[i] = r_end;
+            break;
+          }
+          i = p;
+        }
+      }
+    } else {
+      for (int c=u_end; c < end_r; c++) {
+        int i = colind[c];
+        while (flag[i] != r_start) {
+          overlap += (flag[i] == r_end + 1);
+          int L_idx = cursor[i];
+          cursor[i] = L_idx - s;
+          int* restrict dst = L_colind + L_idx - (s - 1);
+          for (int k=0; k < s; k++) {
+            dst[k] = r_start + k;
+          }
+          LT_colind[lt_write] = i;
+          LT_map[lt_write] = L_idx;
+          lt_write++;
+          flag[i] = r_start;
+          int p = parent[i];
+          if (p == -1) {
+            parent[i] = r_end;
+            break;
+          }
+          i = p;
+        }
       }
     }
 
-    // rows r+1 and r merge iff r+1 is a child of r with the same remaining columns in L, and
-    // LT[r] = LT[r+1] + {r}: equal counts alone do not imply equal descendant rows
-    if (r < n-1) {
-      L_super[r+1] = (parent[r+1] == r &&
-                      L_rownnz[r] == L_rownnz[r+1] - 1 &&
-                      LT_rownnz[r] == LT_rownnz[r+1] + 1 &&
-                      overlap == LT_rownnz[r+1]);
+    // rows r_end+1 and r_end merge iff r_end+1 is a child of r_end with matching L/LT structure
+    if (r_end < n-1) {
+      L_super[r_end+1] = (parent[r_end+1] == r_end &&
+                          L_rownnz[r_end] == L_rownnz[r_end+1] - 1 &&
+                          LT_rownnz[r_end] == LT_rownnz[r_end+1] + 1 &&
+                          overlap == LT_rownnz[r_end+1]);
     }
+
+    // propagate LT_colind, LT_map, and L_super down the chain from r_end-1 to r_start
+    for (int a=1; a < s; a++) {
+      int r = r_end - a;
+      int dst_adr = LT_rowadr[r];
+      int prev_adr = LT_rowadr[r+1];
+      int prev_len = LT_rownnz[r+1];
+      LT_colind[dst_adr] = r;
+      LT_map[dst_adr] = L_rowadr[r] + L_rownnz[r] - 1;
+      int* restrict dst_col = LT_colind + dst_adr + 1;
+      const int* restrict src_col = LT_colind + prev_adr;
+      int* restrict dst_map = LT_map + dst_adr + 1;
+      const int* restrict src_map = LT_map + prev_adr;
+      for (int t=0; t < prev_len; t++) {
+        dst_col[t] = src_col[t];
+        dst_map[t] = src_map[t] - 1;
+      }
+      L_super[r+1] = (L_rownnz[r] == L_rownnz[r+1] - 1);
+    }
+
+    r_end = r_start - 1;
   }
 
   // supernode sizes: L_super[r] = number of rows r, r-1, ... (up to 3) that merge
-  if (n > 0) {
-    L_super[0] = 0;
-  }
+  L_super[0] = 0;
   for (int r=n-1; r >= 0; r--) {
     int merge = L_super[r];
     L_super[r] = 1 + merge + (merge && r > 0 && L_super[r-1]);
@@ -352,9 +763,7 @@ int mju_cholFactorSymbolic(int* restrict L_colind, int* restrict L_rownnz, int* 
   if (d) {
     mj_freeStack(d);
   } else {
-    mju_free(parent);
-    mju_free(flag);
-    mju_free(cursor);
+    mju_free(scratch);
   }
 
   return 0;
@@ -455,6 +864,119 @@ int mju_cholFactorSymbolicBlocked(int* restrict L_colind, int* restrict L_rownnz
 }
 
 
+// load width (3 or 4) consecutive elements
+static mjALWAYS_INLINE mjtNum4 cholLoad(const mjtNum* p, int width) {
+  return width == 4 ? v4_load(p) : v4_load3(p);
+}
+
+
+// store width (3 or 4) consecutive elements
+static mjALWAYS_INLINE void cholStore(mjtNum* p, mjtNum4 v, int width) {
+  if (width == 4) {
+    v4_store(p, v);
+  } else {
+    v4_store3(p, v);
+  }
+}
+
+
+// broadcast ns x batch update weights into SIMD vectors (ns, batch are compile-time constants)
+static mjALWAYS_INLINE
+void cholSplatScales(int ns, int batch, mjtNum4 s4[3][4], mjtNum s[3][4]) {
+  for (int t=0; t < ns; t++) {
+    for (int b=0; b < batch; b++) {
+      s4[t][b] = v4_splat(s[t][b]);
+    }
+  }
+}
+
+
+// update width (3 or 4) consecutive elements of ns target rows from batch descendant rows
+//   scalar equivalent: dptr[t][dst+k] -= sum_b s[t][b] * p[b][src+k],  for k < width
+static mjALWAYS_INLINE
+void cholUpdateStepSIMD(int ns, int batch, int width,
+                        mjtNum* restrict dptr0, mjtNum* restrict dptr1, mjtNum* restrict dptr2,
+                        int dst,
+                        const mjtNum* restrict p0, const mjtNum* restrict p1,
+                        const mjtNum* restrict p2, const mjtNum* restrict p3,
+                        int src, mjtNum4 s4[3][4]) {
+  mjtNum* restrict dptr[3] = {dptr0, dptr1, dptr2};
+  const mjtNum* restrict p[4] = {p0, p1, p2, p3};
+
+  // load target rows
+  mjtNum4 a[3];
+  for (int t=0; t < ns; t++) {
+    a[t] = cholLoad(dptr[t]+dst, width);
+  }
+
+  // subtract weighted descendant rows
+  for (int b=0; b < batch; b++) {
+    mjtNum4 v = cholLoad(p[b]+src, width);
+    for (int t=0; t < ns; t++) {
+      a[t] = v4_sub(a[t], v4_mul(s4[t][b], v));
+    }
+  }
+
+  // store target rows
+  for (int t=0; t < ns; t++) {
+    cholStore(dptr[t]+dst, a[t], width);
+  }
+}
+
+
+// update one element of ns target rows from batch descendant rows (scalar cholUpdateStepSIMD)
+static mjALWAYS_INLINE
+void cholUpdateStepScalar(int ns, int batch,
+                          mjtNum* restrict dptr0, mjtNum* restrict dptr1, mjtNum* restrict dptr2,
+                          int dst,
+                          const mjtNum* restrict p0, const mjtNum* restrict p1,
+                          const mjtNum* restrict p2, const mjtNum* restrict p3,
+                          int src, mjtNum s[3][4]) {
+  mjtNum* restrict dptr[3] = {dptr0, dptr1, dptr2};
+  const mjtNum* restrict p[4] = {p0, p1, p2, p3};
+
+  // gather descendant values
+  mjtNum v[4];
+  for (int b=0; b < batch; b++) {
+    v[b] = p[b][src];
+  }
+
+  // subtract weighted descendant values from each target row
+  for (int t=0; t < ns; t++) {
+    mjtNum a = dptr[t][dst];
+    for (int b=0; b < batch; b++) {
+      a -= s[t][b] * v[b];
+    }
+    dptr[t][dst] = a;
+  }
+}
+
+
+// contiguous update of ns target rows from batch descendant rows (ns, batch compile-time constants)
+static mjALWAYS_INLINE
+void cholContigUpdate(int ns, int batch, int n,
+                      mjtNum* restrict dptr0, mjtNum* restrict dptr1, mjtNum* restrict dptr2,
+                      const mjtNum* restrict p0, const mjtNum* restrict p1,
+                      const mjtNum* restrict p2, const mjtNum* restrict p3,
+                      mjtNum s[3][4]) {
+  // 4-wide SIMD loop
+  int i = 0;
+  if (n >= 4) {
+    mjtNum4 s4[3][4];
+    cholSplatScales(ns, batch, s4, s);
+
+    for (; i <= n-4; i += 4) {
+      cholUpdateStepSIMD(ns, batch, 4, dptr0, dptr1, dptr2, i, p0, p1, p2, p3, i, s4);
+    }
+  }
+
+  // scalar remainder
+  for (; i < n; i++) {
+    cholUpdateStepScalar(ns, batch, dptr0, dptr1, dptr2, i, p0, p1, p2, p3, i, s);
+  }
+}
+
+
 // suffix update of ns target rows from batch descendant rows (ns, batch are compile-time constants)
 static mjALWAYS_INLINE
 void cholSuffixUpdate(int ns, int batch, int nlead,
@@ -463,17 +985,7 @@ void cholSuffixUpdate(int ns, int batch, int nlead,
                       const mjtNum* restrict p2, const mjtNum* restrict p3,
                       mjtNum s[3][4]) {
   // leading columns shared by all ns rows
-  for (int i=0; i < nlead; i++) {
-    mjtNum v[4] = {p0[i], (batch >= 2) ? p1[i] : 0,
-                   (batch >= 3) ? p2[i] : 0, (batch >= 4) ? p3[i] : 0};
-    for (int b=0; b < batch; b++) dptr0[i] -= s[0][b] * v[b];
-    if (ns >= 2) {
-      for (int b=0; b < batch; b++) dptr1[i] -= s[1][b] * v[b];
-    }
-    if (ns >= 3) {
-      for (int b=0; b < batch; b++) dptr2[i] -= s[2][b] * v[b];
-    }
-  }
+  cholContigUpdate(ns, batch, nlead, dptr0, dptr1, dptr2, p0, p1, p2, p3, s);
 
   // triangular tail: column nlead+u is present in rows t <= ns-2-u
   for (int u=0; u < ns-1; u++) {
@@ -498,22 +1010,36 @@ void cholMappedUpdate(int ns, int batch, int nlead, int L_nnz,
                       const mjtNum* restrict p2, const mjtNum* restrict p3,
                       mjtNum s[3][4]) {
   // leading columns shared by all ns rows at identical pos_map[colptr[i]]
-  for (int i=0; i < nlead; i++) {
-    int pos = pos_map[colptr[i]];
-    mjtNum v[4] = {p0[i], (batch >= 2) ? p1[i] : 0,
-                   (batch >= 3) ? p2[i] : 0, (batch >= 4) ? p3[i] : 0};
-    mjtNum a0 = dptr0[pos];
-    for (int b=0; b < batch; b++) a0 -= s[0][b] * v[b];
-    dptr0[pos] = a0;
-    if (ns >= 2) {
-      mjtNum a1 = dptr1[pos];
-      for (int b=0; b < batch; b++) a1 -= s[1][b] * v[b];
-      dptr1[pos] = a1;
-    }
-    if (ns >= 3) {
-      mjtNum a2 = dptr2[pos];
-      for (int b=0; b < batch; b++) a2 -= s[2][b] * v[b];
-      dptr2[pos] = a2;
+  if (nlead >= 4 && pos_map[colptr[nlead-1]] == pos_map[colptr[0]] + nlead - 1) {
+    // entire leading segment is contiguous in pos_map
+    int pos0 = pos_map[colptr[0]];
+    cholContigUpdate(ns, batch, nlead, dptr0+pos0, (ns >= 2) ? dptr1+pos0 : NULL,
+                     (ns >= 3) ? dptr2+pos0 : NULL, p0, p1, p2, p3, s);
+  } else {
+    // scan pos_map for 4-wide and 3-wide contiguous runs, else update a single column
+    mjtNum4 s4[3][4];
+    cholSplatScales(ns, batch, s4, s);
+    int i = 0;
+    while (i < nlead) {
+      int pos = pos_map[colptr[i]];
+
+      // 4-wide contiguous run (pos_map is strictly ascending, so all 4 are consecutive)
+      if (i + 4 <= nlead && pos_map[colptr[i+3]] == pos + 3) {
+        cholUpdateStepSIMD(ns, batch, 4, dptr0, dptr1, dptr2, pos, p0, p1, p2, p3, i, s4);
+        i += 4;
+      }
+
+      // 3-wide contiguous run (e.g. 3-DOF flex vertex blocks)
+      else if (i + 3 <= nlead && pos_map[colptr[i+2]] == pos + 2) {
+        cholUpdateStepSIMD(ns, batch, 3, dptr0, dptr1, dptr2, pos, p0, p1, p2, p3, i, s4);
+        i += 3;
+      }
+
+      // single column
+      else {
+        cholUpdateStepScalar(ns, batch, dptr0, dptr1, dptr2, pos, p0, p1, p2, p3, i, s);
+        i++;
+      }
     }
   }
 
@@ -812,11 +1338,14 @@ int cholFactorSupernode(
       for (int t=s+1; t < ns; t++) {
         s_st[t] = (row_s[L_nnz-1-t] *= L_rr_inv);
       }
-      for (int i=0; i < n_off; i++) {
-        mjtNum l_si = (row_s[i] *= L_rr_inv);
-        if (s + 1 < ns) Lptr_s[s+1][i] -= s_st[s+1] * l_si;
-        if (s + 2 < ns) Lptr_s[s+2][i] -= s_st[s+2] * l_si;
+
+      // scale off-diagonal entries of row s, eliminate them from the remaining supernode rows
+      mju_scl(row_s, row_s, L_rr_inv, n_off);
+      for (int t=s+1; t < ns; t++) {
+        mju_addToScl(Lptr_s[t], row_s, -s_st[t], n_off);
       }
+
+      // update remaining supernode diagonal block
       for (int t=s+1; t < ns; t++) {
         for (int u=t; u < ns; u++) {
           Lptr_s[t][L_nnz-1-u] -= s_st[t] * s_st[u];
@@ -874,10 +1403,7 @@ int mju_cholFactorNumeric(mjtNum* restrict L, int n, mjtNum mindiag,
       if (deficient) {
         mju_zero(Lptr, L_nnz-1);
       } else {
-        mjtNum L_rr_inv = 1.0 / L_rr;
-        for (int i=0; i < L_nnz-1; i++) {
-          Lptr[i] = Hptr[i] * L_rr_inv;
-        }
+        mju_scl(Lptr, Hptr, 1.0 / L_rr, L_nnz-1);
       }
       Lptr[L_nnz-1] = L_rr;
       continue;

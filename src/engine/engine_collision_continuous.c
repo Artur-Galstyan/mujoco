@@ -211,7 +211,10 @@ mjtNum mjc_GeomDist(const mjModel* m, int gi, const mjtNum* gpos, const mjtNum* 
       nl[0] = p[0] / (size[0] * size[0]);
       nl[1] = p[1] / (size[1] * size[1]);
       nl[2] = p[2] / (size[2] * size[2]);
-      if (mju_normalize3(nl) == 0) nl[2] = 1;
+      if (mju_normalize3(nl) == 0) {
+        nl[0] = 0;
+        nl[2] = 1;
+      }
     }
   } else {
     return 1e30;  // unsupported geom -> no barrier
@@ -1404,11 +1407,11 @@ static inline void advanceGeomPose(mjCCDObj* obj, const mjtNum dx[3], const mjtN
   }
 
   mjtNum axis[3], dq[4], dmat[9], mat[9];
-  mju_copy9(mat, obj->mat);
+  mji_copy9(mat, obj->mat);
   mji_scl3(axis, dw, 1.0 / wnorm);
-  mju_axisAngle2Quat(dq, axis, wnorm * step);
-  mju_quat2Mat(dmat, dq);
-  mju_mulMatMat3(obj->mat, dmat, mat);
+  mji_axisAngle2Quat(dq, axis, wnorm * step);
+  mji_quat2Mat(dmat, dq);
+  mji_mulMatMat3(obj->mat, dmat, mat);
 }
 
 

@@ -22,7 +22,10 @@ cc_library(
         "-Wunused",
         "-Wvla",
         "-Wimplicit-fallthrough",
-    ],
+    ] + select({
+        "@platforms//os:windows": [],
+        "//conditions:default": ["-Wno-psabi"],
+    }),
     copts = [
         "-I" + MJ_ROOT,
         "-I" + MJ_ROOT + "/src",
@@ -34,6 +37,27 @@ cc_library(
         "//src/engine:engine_inline",
         "//src/engine:engine_util_blas",
         "//src/engine:engine_util_misc",
+    ],
+)
+
+cc_library(
+    name = "flex_test_fixture",
+    testonly = True,
+    hdrs = ["flex_test_fixture.h"],
+    conlyopts = ["-std=c11"],
+    copts = [
+        "-I" + MJ_ROOT,
+        "-I" + MJ_ROOT + "/src",
+        "-ffp-contract=off",
+    ],
+    cxxopts = ["-std=c++20"],
+    deps = [
+        "//:mujoco",
+        "//src/engine:engine_core_util",
+        "//src/engine:engine_derivative",
+        "//src/engine:engine_util_sparse",
+        "//test:fixture",
+        "@googletest//:gtest",
     ],
 )
 
@@ -155,6 +179,7 @@ cc_test(
     deps = [
         "//:mujoco",
         "//src/engine:engine_collision",
+        "//src/engine:engine_collision_convex",
         "//test:fixture",
         "@googletest//:gtest_main",
     ],
@@ -256,6 +281,7 @@ cc_test(
         "//test/testdata:test_mjcf",
     ],
     deps = [
+        ":flex_test_fixture",
         "//:mujoco",
         "//src/engine:engine_core",
         "//src/engine:engine_core_util",
@@ -387,6 +413,28 @@ cc_test(
         "//src/engine:engine_derivative",
         "//src/engine:engine_forward",
         "//src/engine:engine_memory",
+        "//test:fixture",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "engine_metric_test",
+    srcs = ["engine_metric_test.cc"],
+    conlyopts = ["-std=c11"],
+    copts = [
+        "-I" + MJ_ROOT,
+        "-I" + MJ_ROOT + "/src",
+        "-ffp-contract=off",
+    ],
+    cxxopts = ["-std=c++20"],
+    deps = [
+        ":flex_test_fixture",
+        "//:mujoco",
+        "//src/engine:engine_core_util",
+        "//src/engine:engine_derivative",
+        "//src/engine:engine_util_blas",
+        "//src/engine:engine_util_sparse",
         "//test:fixture",
         "@googletest//:gtest_main",
     ],
@@ -637,7 +685,10 @@ cc_test(
     name = "engine_simd_test",
     srcs = ["engine_simd_test.cc"],
     conlyopts = ["-std=c11"],
-    copts = [
+    copts = select({
+        "@platforms//os:windows": [],
+        "//conditions:default": ["-Wno-psabi"],
+    }) + [
         "-I" + MJ_ROOT,
         "-I" + MJ_ROOT + "/src",
         "-ffp-contract=off",

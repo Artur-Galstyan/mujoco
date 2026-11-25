@@ -20,7 +20,6 @@
 #include <optional>
 #include <string_view>
 
-#include <filament/Engine.h>
 #include <math/mat3.h>
 #include <math/vec3.h>
 #include <mujoco/mjmodel.h>
@@ -83,17 +82,6 @@ static std::optional<E> parse_enum(std::string_view name) {
     static_assert(std::is_same_v<E, void>, "Unsupported enum type");
   }
   return std::nullopt;
-}
-
-static const char* BackendName(filament::Engine::Backend backend) {
-  switch (backend) {
-    case filament::Engine::Backend::OPENGL:
-      return "opengl";
-    case filament::Engine::Backend::VULKAN:
-      return "vulkan";
-    default:
-      return "unknown";
-  }
 }
 
 // Helper class for reading values from mjModel custom fields.
@@ -162,6 +150,7 @@ void mjrf_defaultLightParams(mjrfLightParams* params) {
   params->softness = 0.0f;
   params->bulb_radius = 0.0f;
   params->shadow_map_size = 2048;
+  params->image_diffuse_scale = 1.0f;
 }
 
 void mjrf_defaultMaterial(mjrfMaterial* material) {
@@ -215,7 +204,7 @@ void mjrf_defaultShadowOpts(mjrfShadowOpts* opts) {
 
 void mjrf_defaultMaterialOpts(mjrfMaterialOpts* opts) {
   std::memset(opts, 0, sizeof(mjrfMaterialOpts));
-  opts->rgb_color_type = mjCOLORSPACE_SRGB;
+  opts->rgb_color_type = mjCOLORSPACE_LINEAR;
   opts->enable_textures = true;
 }
 
@@ -362,7 +351,7 @@ void mjrf_destroyContext(mjrfContext* ctx) {
 void mjrf_getRendererInfo(mjrfContext* ctx, mjrRendererInfo* info) {
   memset(info, 0, sizeof(mjrRendererInfo));
   info->renderer = "filament";
-  info->backend = ctx ? BackendName(mujoco::FilamentContext::downcast(ctx)->GetBackend()) : "";
+  info->backend = ctx ? mujoco::FilamentContext::downcast(ctx)->GetBackendName() : "";
 }
 
 mjrfTexture* mjrf_createTexture(mjrfContext* ctx,
@@ -619,7 +608,7 @@ void mjrf_modelRenderOpts(mjrfRenderOpts* opts, const mjModel* model) {
   // to match the classic renderer or not.
   auto& headlight = model->vis.headlight;
 
-  float headlight_base_intensity = 100'000.f;
+  float headlight_base_intensity = 150'000.f;
   read(headlight_base_intensity, "filament.fallback.head_light_intensity");
   const float headlight_strength =
       (headlight.diffuse[0] + headlight.diffuse[1] + headlight.diffuse[2]) /

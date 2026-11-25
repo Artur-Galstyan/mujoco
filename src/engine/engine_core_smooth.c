@@ -27,6 +27,7 @@
 #include "engine/engine_inline.h"
 #include "engine/engine_macro.h"
 #include "engine/engine_memory.h"
+#include "engine/engine_simd.h"
 #include "engine/engine_sleep.h"
 #include "engine/engine_util_blas.h"
 #include "engine/engine_util_errmem.h"
@@ -494,44 +495,40 @@ void mj_camlight(const mjModel* m, mjData* d) {
 
 // update dynamic BVH; leaf aabbs must be updated before call
 void mj_updateDynamicBVH(const mjModel* m, mjData* d, int bvhadr, int bvhnum) {
-  mj_markStack(d);
-  int* modified = mjSTACKALLOC(d, bvhnum, int);
-  mju_zeroInt(modified, bvhnum);
-
-  // mark leafs as modified
-  for (int i=0; i < bvhnum; i++) {
-    if (m->bvh_nodeid[bvhadr+i] >= 0) {
-      modified[i] = 1;
-    }
+  if (bvhnum <= 1) {
+    return;
   }
+
+  mj_markStack(d);
+  const int* nodeid = m->bvh_nodeid + bvhadr;
+  const int* child = m->bvh_child + 2*bvhadr;
+  mjtNum* bvh = d->bvh_aabb_dyn + 6*(bvhadr - m->nbvhstatic);
+  mjtNum* bmin = mjSTACKALLOC(d, 4*bvhnum, mjtNum);
+  mjtNum* bmax = mjSTACKALLOC(d, 4*bvhnum, mjtNum);
+  mjtNum4 half = v4_splat(0.5);
 
   // update non-leafs in backward pass (parents come before children)
   for (int i=bvhnum-1; i >= 0; i--) {
-    if (m->bvh_nodeid[bvhadr+i] < 0) {
-      int child1 = m->bvh_child[2*(bvhadr+i)];
-      int child2 = m->bvh_child[2*(bvhadr+i)+1];
+    mjtNum* aabb = bvh + 6*i;
+    if (nodeid[i] >= 0) {
+      // leaf: unpack (center, size) into scratch (min, max)
+      mjtNum4 c = v4_load3(aabb);
+      mjtNum4 s = v4_load3(aabb+3);
+      v4_store(bmin+4*i, v4_sub(c, s));
+      v4_store(bmax+4*i, v4_add(c, s));
+    } else {
+      int child1 = child[2*i];
+      int child2 = child[2*i+1];
 
-      // update if either child is modified
-      if (modified[child1] || modified[child2]) {
-        mjtNum* aabb = d->bvh_aabb_dyn + 6*(bvhadr - m->nbvhstatic + i);
-        const mjtNum* aabb1 = d->bvh_aabb_dyn + 6*(bvhadr - m->nbvhstatic + child1);
-        const mjtNum* aabb2 = d->bvh_aabb_dyn + 6*(bvhadr - m->nbvhstatic + child2);
+      // compute new (min, max)
+      mjtNum4 lo = v4_min(v4_load(bmin+4*child1), v4_load(bmin+4*child2));
+      mjtNum4 hi = v4_max(v4_load(bmax+4*child1), v4_load(bmax+4*child2));
+      v4_store(bmin+4*i, lo);
+      v4_store(bmax+4*i, hi);
 
-        // compute new (min, max)
-        mjtNum xmin[3], xmax[3];
-        for (int k=0; k < 3; k++) {
-          xmin[k] = mju_min(aabb1[k] - aabb1[k+3], aabb2[k] - aabb2[k+3]);
-          xmax[k] = mju_max(aabb1[k] + aabb1[k+3], aabb2[k] + aabb2[k+3]);
-        }
-
-        // convert to (center, size)
-        for (int k=0; k < 3; k++) {
-          aabb[k]   = 0.5*(xmax[k]+xmin[k]);
-          aabb[k+3] = 0.5*(xmax[k]-xmin[k]);
-        }
-
-        modified[i] = 1;
-      }
+      // convert to (center, size)
+      v4_store3(aabb, v4_mul(half, v4_add(hi, lo)));
+      v4_store3(aabb+3, v4_mul(half, v4_sub(hi, lo)));
     }
   }
 
@@ -857,11 +854,11 @@ void mj_tendon(const mjModel* m, mjData* d) {
           mji_sub3(dif, wpnt+3*k+3, wpnt+3*k);
           mju_normalize3(dif);
 
-          // get endpoint Jacobians, subtract
+          // get endpoint Jacobians, subtract (shared ancestor dofs cancel when dotted with dif)
           int NV = mj_jacDifPair(m, d, chain,
                                  wbody[k], wbody[k+1], wpnt+3*k, wpnt+3*k+3,
                                  jac1, jac2, jacdif, NULL, NULL, NULL, /*issparse=*/1,
-                                 /*skipcommon=*/0);
+                                 /*flg_skipcommon=*/1);
 
           // no dofs: skip
           if (!NV) {
@@ -995,13 +992,13 @@ mjtNum mj_tendonDot(const mjModel* m, mjData* d, int id, const mjtNum* vec) {
 
       // sparse
       if (issparse) {
-        // construct merged chain
-        int NV = mj_mergeChain(m, chain, wbody[0], wbody[1], /*flg_skipcommon=*/0);
+        // construct merged chain (shared ancestor dofs cancel in J and Jdot)
+        int NV = mj_mergeChain(m, chain, wbody[0], wbody[1], /*flg_skipcommon=*/1);
 
         if (NV) {
           // get endpoint JacobianDots, subtract
-          mj_jacDotSparse(m, d, jac1, 0, wpnt, wbody[0], NV, chain);
-          mj_jacDotSparse(m, d, jac2, 0, wpnt+3, wbody[1], NV, chain);
+          mj_jacDotSparse(m, d, jac1, 0, wpnt, wbody[0], NV, chain, /*flg_skipcommon=*/1);
+          mj_jacDotSparse(m, d, jac2, 0, wpnt+3, wbody[1], NV, chain, /*flg_skipcommon=*/1);
           mju_sub(jacdif, jac2, jac1, 3*NV);
 
           // chain rule, first term: Jdot += d/dt(jac2 - jac1) * dpnt
@@ -1012,8 +1009,8 @@ mjtNum mj_tendonDot(const mjModel* m, mjData* d, int id, const mjtNum* vec) {
           }
 
           // get endpoint Jacobians, subtract
-          mj_jacSparse(m, d, jac1, 0, wpnt, wbody[0], NV, chain, /*flg_skipcommon=*/0);
-          mj_jacSparse(m, d, jac2, 0, wpnt+3, wbody[1], NV, chain, /*flg_skipcommon=*/0);
+          mj_jacSparse(m, d, jac1, 0, wpnt, wbody[0], NV, chain, /*flg_skipcommon=*/1);
+          mj_jacSparse(m, d, jac2, 0, wpnt+3, wbody[1], NV, chain, /*flg_skipcommon=*/1);
           mju_sub(jacdif, jac2, jac1, 3*NV);
 
           // chain rule, second term: Jdot += (jac2 - jac1) * d/dt(dpnt)
@@ -1270,9 +1267,10 @@ void mj_transmission(const mjModel* m, mjData* d) {
         int ten_J_rownnz = m->ten_J_rownnz[id];
         int ten_J_rowadr = m->ten_J_rowadr[id];
         rownnz[out] = ten_J_rownnz;
-        mju_copyInt(colind + adr, m->ten_J_colind + ten_J_rowadr, ten_J_rownnz);
-
-        mju_scl(moment + adr, d->ten_J + ten_J_rowadr, gear[0], ten_J_rownnz);
+        if (ten_J_rownnz) {
+          mju_copyInt(colind + adr, m->ten_J_colind + ten_J_rowadr, ten_J_rownnz);
+          mju_scl(moment + adr, d->ten_J + ten_J_rowadr, gear[0], ten_J_rownnz);
+        }
       }
       break;
 
@@ -1838,7 +1836,7 @@ int mj_factorI(mjtNum* mat, mjtNum* diaginv, int nv,
     }
 
     // update row k:  L(k, :) /= L(k, k)
-    mju_scl(mat + start, mat + start, invD, diag);
+    if (diag) mju_scl(mat + start, mat + start, invD, diag);
   }
 
   return clamped;

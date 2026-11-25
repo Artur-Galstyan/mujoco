@@ -51,7 +51,11 @@ void mjuu_setvec(double* dest, double x, double y);
 // copy real-valued vector
 template <class T1, class T2>
 void mjuu_copyvec(T1* dest, const T2* src, int n) {
-  std::copy(src, src + n, dest);
+  if constexpr (std::is_same_v<T1, T2>) {
+    std::copy(src, src + n, dest);
+  } else {
+    for (int i = 0; i < n; i++) { dest[i] = static_cast<T1>(src[i]); }
+  }
 }
 
 // add to double array
@@ -289,15 +293,15 @@ std::vector<uint8_t> FileToMemory(const char* filename);
 template <typename T>
 std::string VectorToString(const std::vector<T>& v);
 
-// convert string to vector
+// convert string to vector, optionally reporting parse error code (0, EDOM, EINVAL, ERANGE)
 template <typename T>
-std::vector<T> StringToVector(char* cs);
+std::vector<T> StringToVector(const char* cs, int* err = nullptr);
 template <typename T>
-std::vector<T> StringToVector(const std::string& s);
+std::vector<T> StringToVector(const std::string& s, int* err = nullptr);
 template <>
-std::vector<std::string> StringToVector(char* cs);
+std::vector<std::string> StringToVector(const char* cs, int* err);
 template <>
-std::vector<std::string> StringToVector(const std::string& s);
+std::vector<std::string> StringToVector(const std::string& s, int* err);
 
 }  // namespace mujoco::user
 

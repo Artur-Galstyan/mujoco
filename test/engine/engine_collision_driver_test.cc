@@ -15,6 +15,7 @@
 // Tests for engine/engine_collision_driver.c.
 
 #include "src/engine/engine_collision_driver.h"
+#include "src/engine/engine_collision_nonconvex.h"
 
 #include <algorithm>
 #include <cmath>
@@ -80,25 +81,6 @@ TEST_F(MjCollisionTest, EmptyModel) {
 
   mj_fwdPosition(model.get(), data.get());
   EXPECT_THAT(colliding_pairs(model.get(), data.get()), IsEmpty());
-}
-
-TEST_F(MjCollisionTest, ZeroedHessian) {
-  static const char* const kModelFilePath = "engine/testdata/collisions.xml";
-  const std::string xml_path = GetTestDataFilePath(kModelFilePath);
-  char error[1024];
-  mjModel* model = mj_loadXML(xml_path.c_str(), nullptr, error, sizeof(error));
-  ASSERT_THAT(model, NotNull()) << error;
-  mjData* data = mj_makeData(model);
-
-  mj_fwdPosition(model, data);
-  for (int i = 0; i < data->ncon; i++) {
-    for (int j = 0; j < 36; j++) {
-      EXPECT_FALSE(isnan(data->contact[i].H[j]))
-          << "NaN in contact[" << i << "].H[" << j << "]";
-    }
-  }
-  mj_deleteData(data);
-  mj_deleteModel(model);
 }
 
 TEST_F(MjCollisionTest, ContactCount) {
@@ -2157,6 +2139,375 @@ TEST_F(MjCollisionTest, BroadphaseSleepMocapAndStaticPlanes) {
   EXPECT_THAT(colliding_pairs(m.get(), d.get()),
               ElementsAre(GeomPair("floor", "s1"), GeomPair("floor", "s2"),
                           GeomPair("mocap_geom", "s1"), GeomPair("s1", "s2")));
+}
+
+TEST_F(MjCollisionTest, BroadphaseSAPMatchesBruteForce) {
+  std::string xml = R"(
+  <mujoco>
+    <option>
+      <flag sleep="enable"/>
+    </option>
+    <worldbody>
+      <body name="rail_a" pos="0 -0.15 0.5">
+        <geom name="rail_a" type="box" size="2.0 0.03 0.03"/>
+      </body>
+      <body name="rail_b" pos="0 0.15 0.5">
+        <geom name="rail_b" type="box" size="2.0 0.03 0.03"/>
+      </body>
+  )";
+  for (int i = 0; i < 40; ++i) {
+    double x = -0.9 + 0.048 * i;
+    double y = 0.06 * std::sin(1.3 * i);
+    double z = (i < 20 ? 0.2 : 0.8) + 0.05 * std::cos(0.9 * i);
+    xml += "      <body pos=\"" + std::to_string(x) + " " + std::to_string(y) +
+           " " + std::to_string(z) + "\"" + (i < 20 ? " sleep=\"init\"" : "") +
+           ">\n";
+    xml += "        <freejoint/>\n";
+    xml += "        <geom name=\"s" + std::to_string(i) +
+           "\" type=\"sphere\" size=\"0.055\"/>\n";
+    xml += "      </body>\n";
+  }
+  xml += "    </worldbody>\n  </mujoco>\n";
+
+  char error[1024];
+  MjModelPtr m = LoadModelFromString(xml.c_str(), error, sizeof(error));
+  ASSERT_THAT(m.get(), NotNull()) << error;
+  MjDataPtr d = MakeData(m);
+
+  mj_kinematics(m.get(), d.get());
+  mj_comPos(m.get(), d.get());
+  mj_collision(m.get(), d.get());
+
+  // Compute exact colliding awake sphere-sphere pairs by brute force
+  std::vector<GeomPair> expected_spheres;
+  for (int g1 = 0; g1 < m->ngeom; ++g1) {
+    if (m->geom_type[g1] != mjGEOM_SPHERE) continue;
+    int b1 = m->geom_bodyid[g1];
+    bool awake1 = d->body_awake[b1] == mjS_AWAKE;
+    for (int g2 = g1 + 1; g2 < m->ngeom; ++g2) {
+      if (m->geom_type[g2] != mjGEOM_SPHERE) continue;
+      int b2 = m->geom_bodyid[g2];
+      bool awake2 = d->body_awake[b2] == mjS_AWAKE;
+      if (!awake1 && !awake2) continue;
+      mjtNum dx = d->geom_xpos[3 * g1 + 0] - d->geom_xpos[3 * g2 + 0];
+      mjtNum dy = d->geom_xpos[3 * g1 + 1] - d->geom_xpos[3 * g2 + 1];
+      mjtNum dz = d->geom_xpos[3 * g1 + 2] - d->geom_xpos[3 * g2 + 2];
+      mjtNum rsum = m->geom_size[3 * g1] + m->geom_size[3 * g2];
+      if (dx * dx + dy * dy + dz * dz < rsum * rsum) {
+        std::string n1 = mj_id2name(m.get(), mjOBJ_GEOM, g1);
+        std::string n2 = mj_id2name(m.get(), mjOBJ_GEOM, g2);
+        expected_spheres.emplace_back(std::min(n1, n2), std::max(n1, n2));
+      }
+    }
+  }
+  std::sort(expected_spheres.begin(), expected_spheres.end());
+
+  std::vector<GeomPair> actual_spheres;
+  for (const GeomPair& p : colliding_pairs(m.get(), d.get())) {
+    if (p.first[0] == 's' && p.second[0] == 's') {
+      actual_spheres.push_back(p);
+    }
+  }
+  EXPECT_GT(expected_spheres.size(), 5u);
+  EXPECT_EQ(actual_spheres, expected_spheres);
+}
+
+TEST_F(MjCollisionTest, FlexSAPSelfCollideMatchesNarrow) {
+  auto make_xml = [](const char* mode) {
+    return std::string(R"(
+    <mujoco>
+      <worldbody>
+        <flexcomp name="cloth" type="grid" dim="2" count="4 4 1"
+                  spacing="0.05 0.05 0.05" pos="0 0 0.5" radius="0.008" mass="1">
+          <edge equality="true"/>
+          <contact selfcollide=")") +
+           mode + R"("/>
+        </flexcomp>
+      </worldbody>
+    </mujoco>)";
+  };
+
+  char error[1024];
+  std::string xml_sap = make_xml("sap");
+  std::string xml_narrow = make_xml("narrow");
+  MjModelPtr m_sap = LoadModelFromString(xml_sap.c_str(), error, sizeof(error));
+  ASSERT_THAT(m_sap.get(), NotNull()) << error;
+  MjModelPtr m_narrow =
+      LoadModelFromString(xml_narrow.c_str(), error, sizeof(error));
+  ASSERT_THAT(m_narrow.get(), NotNull()) << error;
+
+  MjDataPtr d_sap = MakeData(m_sap);
+  MjDataPtr d_narrow = MakeData(m_narrow);
+
+  // Fold the cloth along X so non-adjacent triangles self-intersect
+  int nvert = m_sap->flex_vertnum[0];
+  for (int v = 0; v < nvert; ++v) {
+    int b = m_sap->flex_vertbodyid[v];
+    int qadr = m_sap->jnt_qposadr[m_sap->body_jntadr[b]];
+    double x = m_sap->body_pos[3 * b + 0];
+    if (x > 0.02) {
+      d_sap->qpos[qadr + 0] = -2.0 * x + 0.01;
+      d_sap->qpos[qadr + 2] = 0.005;
+    }
+    d_narrow->qpos[qadr + 0] = d_sap->qpos[qadr + 0];
+    d_narrow->qpos[qadr + 1] = d_sap->qpos[qadr + 1];
+    d_narrow->qpos[qadr + 2] = d_sap->qpos[qadr + 2];
+  }
+
+  mj_forward(m_sap.get(), d_sap.get());
+  mj_forward(m_narrow.get(), d_narrow.get());
+
+  EXPECT_GT(d_sap->ncon, 0);
+  ASSERT_EQ(d_sap->ncon, d_narrow->ncon);
+
+  auto sorted_pairs = [](const mjData* d) {
+    std::vector<std::pair<std::pair<int, int>, mjtNum>> out;
+    out.reserve(d->ncon);
+    for (int i = 0; i < d->ncon; ++i) {
+      int e0 = std::min(d->contact[i].elem[0], d->contact[i].elem[1]);
+      int e1 = std::max(d->contact[i].elem[0], d->contact[i].elem[1]);
+      out.push_back({{e0, e1}, d->contact[i].dist});
+    }
+    std::sort(out.begin(), out.end());
+    return out;
+  };
+
+  auto c_sap = sorted_pairs(d_sap.get());
+  auto c_narrow = sorted_pairs(d_narrow.get());
+  for (size_t i = 0; i < c_sap.size(); ++i) {
+    EXPECT_EQ(c_sap[i].first, c_narrow[i].first);
+    EXPECT_NEAR(c_sap[i].second, c_narrow[i].second, MjTol(1e-5, 1e-4));
+  }
+}
+
+TEST_F(MjCollisionTest, HFieldSubgridAndPrismHelpers) {
+  // Verify prism id encode/decode round-trip.
+  int r = -1, c = -1, tri = -1;
+  int id = mjc_hfieldPrismId(/*r=*/2, /*c=*/3, /*tri=*/1, /*nc=*/4);
+  mjc_hfieldPrismCoords(id, /*nc=*/4, &r, &c, &tri);
+  EXPECT_EQ(r, 2);
+  EXPECT_EQ(c, 3);
+  EXPECT_EQ(tri, 1);
+
+  // 5x5 hfield covering [-1, 1] x [-1, 1] (4x4 cells, grid lines at -1, -0.5,
+  // 0, 0.5, 1).
+  static constexpr char kXml[] = R"(
+  <mujoco>
+    <asset>
+      <hfield name="hf" nrow="5" ncol="5" size="1 1 0.1 0.1"/>
+    </asset>
+    <worldbody>
+      <geom name="hf" type="hfield" hfield="hf"/>
+      <body name="far" pos="0 0 2.0">
+        <freejoint/>
+        <geom name="far_sphere" type="sphere" size="0.1"/>
+      </body>
+      <body name="mid" pos="0.25 0.25 0.05">
+        <freejoint/>
+        <geom name="mid_box" type="box" size="0.1 0.1 0.1"/>
+      </body>
+      <flexcomp name="gridline_flex" type="direct" dim="1" radius="0"
+                point="0 0 0  0 0 0.05" element="0 1">
+        <contact selfcollide="none"/>
+      </flexcomp>
+      <flexcomp name="border_flex" type="direct" dim="1" radius="0"
+                pos="-1 -1 0" point="0 0 0  0 0 0.05" element="0 1">
+        <contact selfcollide="none"/>
+      </flexcomp>
+    </worldbody>
+  </mujoco>
+  )";
+  char error[1024];
+  MjModelPtr m = LoadModelFromString(kXml, error, sizeof(error));
+  ASSERT_THAT(m.get(), NotNull()) << error;
+  MjDataPtr d = MakeData(m);
+  mj_forward(m.get(), d.get());
+
+  int g_hf = mj_name2id(m.get(), mjOBJ_GEOM, "hf");
+  int g_far = mj_name2id(m.get(), mjOBJ_GEOM, "far_sphere");
+  int g_mid = mj_name2id(m.get(), mjOBJ_GEOM, "mid_box");
+
+  int rmin = 0, rmax = 0, cmin = 0, cmax = 0;
+  mjtNum zmin = 0;
+
+  // Disjoint geom returns 0.
+  EXPECT_EQ(mjc_hfieldSubgridGeom(m.get(), d.get(), g_hf, g_far, 0, &rmin,
+                                  &rmax, &cmin, &cmax, &zmin),
+            0);
+
+  // Box centered at (0.25, 0.25) with half-size 0.1 lies strictly inside cell
+  // (2, 2).
+  EXPECT_EQ(mjc_hfieldSubgridGeom(m.get(), d.get(), g_hf, g_mid, 0, &rmin,
+                                  &rmax, &cmin, &cmax, &zmin),
+            1);
+  EXPECT_EQ(rmin, 2);
+  EXPECT_EQ(rmax, 3);
+  EXPECT_EQ(cmin, 2);
+  EXPECT_EQ(cmax, 3);
+
+  // Zero-radius vertical flex segment on interior grid line (0, 0) expands
+  // symmetrically to [1, 3).
+  int f_grid = mj_name2id(m.get(), mjOBJ_FLEX, "gridline_flex");
+  EXPECT_EQ(mjc_hfieldSubgridElem(m.get(), d.get(), g_hf, f_grid, 0, 0, &rmin,
+                                  &rmax, &cmin, &cmax, &zmin),
+            1);
+  EXPECT_EQ(rmin, 1);
+  EXPECT_EQ(rmax, 3);
+  EXPECT_EQ(cmin, 1);
+  EXPECT_EQ(cmax, 3);
+
+  // Zero-radius vertical flex segment on outer border (-1, -1) expands to [0,
+  // 1).
+  int f_border = mj_name2id(m.get(), mjOBJ_FLEX, "border_flex");
+  EXPECT_EQ(mjc_hfieldSubgridElem(m.get(), d.get(), g_hf, f_border, 0, 0, &rmin,
+                                  &rmax, &cmin, &cmax, &zmin),
+            1);
+  EXPECT_EQ(rmin, 0);
+  EXPECT_EQ(rmax, 1);
+  EXPECT_EQ(cmin, 0);
+  EXPECT_EQ(cmax, 1);
+}
+
+TEST_F(MjCollisionTest, HFieldThreadedParity) {
+  static constexpr char kXml[] = R"(
+  <mujoco>
+    <asset>
+      <hfield name="hf" nrow="9" ncol="9" size="1 1 0.1 0.1"/>
+    </asset>
+    <worldbody>
+      <geom name="hf" type="hfield" hfield="hf"/>
+      <body name="b1" pos="0 0 0.08">
+        <freejoint/>
+        <geom type="box" size="0.3 0.3 0.1"/>
+      </body>
+      <body name="b2" pos="0.5 0.2 0.08">
+        <freejoint/>
+        <geom type="sphere" size="0.1"/>
+      </body>
+      <body name="b3" pos="-0.4 -0.3 0.08">
+        <freejoint/>
+        <geom type="capsule" size="0.08 0.15"/>
+      </body>
+    </worldbody>
+  </mujoco>
+  )";
+  char error[1024];
+  MjModelPtr m = LoadModelFromString(kXml, error, sizeof(error));
+  ASSERT_THAT(m.get(), NotNull()) << error;
+
+  MjDataPtr d_serial = MakeData(m);
+  mj_forward(m.get(), d_serial.get());
+  ASSERT_GT(d_serial->ncon, 0);
+
+  MjDataPtr d_threaded = MakeData(m);
+  mju_threadpool(d_threaded.get(), 4);
+  mj_forward(m.get(), d_threaded.get());
+
+  EXPECT_EQ(d_threaded->ncon, d_serial->ncon);
+  EXPECT_MJTNUM_EQ(d_threaded->contact[0].dist, d_serial->contact[0].dist);
+  EXPECT_MJTNUM_EQ(d_threaded->contact[0].pos[2], d_serial->contact[0].pos[2]);
+  int last = d_serial->ncon - 1;
+  EXPECT_MJTNUM_EQ(d_threaded->contact[last].dist,
+                   d_serial->contact[last].dist);
+  EXPECT_MJTNUM_EQ(d_threaded->contact[last].pos[2],
+                   d_serial->contact[last].pos[2]);
+}
+
+TEST_F(MjCollisionTest, HFieldMaxConPairReductionAndArenaFallback) {
+  // Large flat box overlapping 14x14x2 = 392 prisms (> mjMAXCONPAIR).
+  static constexpr char kXmlNormal[] = R"(
+  <mujoco>
+    <asset>
+      <hfield name="hf" nrow="15" ncol="15" size="1 1 0.1 0.1"/>
+    </asset>
+    <worldbody>
+      <geom name="hf" type="hfield" hfield="hf"/>
+      <body name="big_box" pos="0 0 0.09">
+        <freejoint/>
+        <geom type="box" size="0.9 0.9 0.1"/>
+      </body>
+    </worldbody>
+  </mujoco>
+  )";
+  char error[1024];
+  MjModelPtr m = LoadModelFromString(kXmlNormal, error, sizeof(error));
+  ASSERT_THAT(m.get(), NotNull()) << error;
+  MjDataPtr d = MakeData(m);
+  mj_forward(m.get(), d.get());
+  EXPECT_EQ(d->ncon, mjMAXCONPAIR);
+
+  // Tight arena budget forces canAllocPairs() to fall back to unexpanded
+  // mjc_ConvexHField without triggering a stack overflow in mj_narrowphase.
+  static constexpr char kXmlTight[] = R"(
+  <mujoco>
+    <size memory="30K"/>
+    <asset>
+      <hfield name="hf" nrow="15" ncol="15" size="1 1 0.1 0.1"/>
+    </asset>
+    <worldbody>
+      <geom name="hf" type="hfield" hfield="hf"/>
+      <body name="big_box" pos="0 0 0.09">
+        <freejoint/>
+        <geom type="box" size="0.9 0.9 0.1"/>
+      </body>
+    </worldbody>
+  </mujoco>
+  )";
+  MjModelPtr m_tight = LoadModelFromString(kXmlTight, error, sizeof(error));
+  ASSERT_THAT(m_tight.get(), NotNull()) << error;
+  MjDataPtr d_tight = MakeData(m_tight);
+  mj_kinematics(m_tight.get(), d_tight.get());
+  mj_collision(m_tight.get(), d_tight.get());
+  EXPECT_GT(d_tight->ncon, 0);
+  EXPECT_LE(d_tight->ncon, mjMAXCONPAIR);
+}
+
+TEST_F(MjCollisionTest, HFieldFlexCollisionAndPinnedSkip) {
+  static constexpr char kXml[] = R"(
+  <mujoco>
+    <asset>
+      <hfield name="hf" nrow="5" ncol="5" size="1 1 0.1 0.1"/>
+    </asset>
+    <worldbody>
+      <geom name="hf" type="hfield" hfield="hf"/>
+      <flexcomp name="free_tri" type="direct" dim="2" radius="0.02"
+                point="-0.2 -0.2 0.01  0.2 -0.2 0.01  0 0.2 0.01"
+                element="0 1 2">
+        <contact selfcollide="none"/>
+      </flexcomp>
+    </worldbody>
+  </mujoco>
+  )";
+  char error[1024];
+  MjModelPtr m = LoadModelFromString(kXml, error, sizeof(error));
+  ASSERT_THAT(m.get(), NotNull()) << error;
+  MjDataPtr d = MakeData(m);
+  mj_forward(m.get(), d.get());
+  EXPECT_GT(d->ncon, 0);
+
+  // Pinning a vertex to body 0 (same body as the heightfield) skips the element
+  // in pushGeomElem.
+  static constexpr char kXmlPinned[] = R"(
+  <mujoco>
+    <asset>
+      <hfield name="hf" nrow="5" ncol="5" size="1 1 0.1 0.1"/>
+    </asset>
+    <worldbody>
+      <geom name="hf" type="hfield" hfield="hf"/>
+      <flexcomp name="pinned_tri" type="direct" dim="2" radius="0.02"
+                point="-0.2 -0.2 0.01  0.2 -0.2 0.01  0 0.2 0.01"
+                element="0 1 2">
+        <pin id="0"/>
+        <contact selfcollide="none"/>
+      </flexcomp>
+    </worldbody>
+  </mujoco>
+  )";
+  MjModelPtr m_pin = LoadModelFromString(kXmlPinned, error, sizeof(error));
+  ASSERT_THAT(m_pin.get(), NotNull()) << error;
+  MjDataPtr d_pin = MakeData(m_pin);
+  mj_forward(m_pin.get(), d_pin.get());
+  EXPECT_EQ(d_pin->ncon, 0);
 }
 }  // namespace
 }  // namespace mujoco

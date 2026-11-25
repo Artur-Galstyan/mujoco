@@ -16,6 +16,7 @@
 #define MUJOCO_STUDIO_UX_IMGUI_WIDGETS_H_
 
 #include <cctype>
+#include <cinttypes>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -420,7 +421,7 @@ class ImGui_SpecElementTable : public ImGui_DataPtrTable {
       }
     } else if constexpr (std::is_same_v<T, int64_t>) {
       if (read_only_) {
-        ImGui::Text("%lld", val);
+        ImGui::Text("%" PRId64, val);
       } else {
         if (ImGui::InputScalarN("##", ImGuiDataType_S64, &val, 1)) {
           modified_ = true;
@@ -812,9 +813,6 @@ inline bool BeginBoxSection(const char* id, ImGuiTableFlags extra_flags = 0) {
 
 inline void EndBoxSection() { ImGui::EndTable(); }
 
-// Saves the given contents to the clipboard if the clipboard is available.
-void MaybeSaveToClipboard(const std::string& contents);
-
 // Returns the expected width of a UI label based on MuJoCo visualization flags.
 float GetExpectedLabelWidth();
 
@@ -895,6 +893,19 @@ void EndOverlay();
 void TextOverlay(const char* id, OverlayPos pos, ImVec4 workspace_rect, const char* text,
                  ImVec4 color = ImVec4(0, 0, 0, 0), float font_scale = 1.0f, float alpha = 0.8f,
                  float min_width = 0.0f);
+
+// Strips any unconsumed left-mouse button events queued in Dear ImGui's
+// InputEventsQueue when `io.MouseDown[ImGuiMouseButton_Left]` is still false
+// (e.g. a single-finger TouchScreen press held back by ImGui's input-trickle
+// rule on Frame N when a second finger lands on Frame N+1).
+void StripUnconsumedTouchMousePress();
+
+// Returns true if `pos` (in ImGui screen coordinates) hits any visible,
+// mouse-interactive Dear ImGui window (respecting dockspace passthrough holes),
+// or if any popup/modal is open. Used to hit-test a multi-touch gesture's
+// initial midpoint even on frames where the synthetic cursor is parked
+// off-screen to cancel a single-finger press.
+bool HitTestImGuiWindows(ImVec2 pos);
 
 }  // namespace mujoco::studio
 

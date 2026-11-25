@@ -648,7 +648,6 @@ class MjWrapper<raw::MjContact> : public WrapperBase<raw::MjContact> {
   X(solreffriction);
   X(solimp);
   X(surfacevel);
-  X(H);
   X(geom);
   X(flex);
   X(elem);
@@ -909,6 +908,7 @@ class MjWrapper<raw::MjvOption> : public WrapperBase<raw::MjvOption> {
   X(flexgroup);
   X(skingroup);
   X(flags);
+  X(offset);
   #undef X
 };
 

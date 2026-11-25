@@ -568,7 +568,6 @@ MjContactWrapper::MjWrapper()
       X(solreffriction),
       X(solimp),
       X(surfacevel),
-      X(H),
       X(geom),
       X(flex),
       X(elem),
@@ -583,7 +582,6 @@ MjContactWrapper::MjWrapper(raw::MjContact* ptr, py::handle owner)
       X(solreffriction),
       X(solimp),
       X(surfacevel),
-      X(H),
       X(geom),
       X(flex),
       X(elem),
@@ -1228,7 +1226,8 @@ MjvOptionWrapper::MjWrapper()
       X(actuatorgroup),
       X(flexgroup),
       X(skingroup),
-      X(flags) {}
+      X(flags),
+      X(offset) {}
 #undef X
 
 MjvOptionWrapper::MjWrapper(const MjvOptionWrapper& other)

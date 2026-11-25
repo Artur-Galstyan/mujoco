@@ -1025,8 +1025,8 @@ void mj_Jdotv(const mjModel* m, mjData* d, mjtNum* result) {
           // sparse: translational and rotational
           mjtNum* jacr1 = (type == mjEQ_WELD) ? jacrdot1 : NULL;
           mjtNum* jacr2 = (type == mjEQ_WELD) ? jacrdot2 : NULL;
-          mj_jacDotSparse(m, d, jacdot1, jacr1, pos1, body1, NV, chain);
-          mj_jacDotSparse(m, d, jacdot2, jacr2, pos2, body2, NV, chain);
+          mj_jacDotSparse(m, d, jacdot1, jacr1, pos1, body1, NV, chain, /*flg_skipcommon=*/0);
+          mj_jacDotSparse(m, d, jacdot2, jacr2, pos2, body2, NV, chain, /*flg_skipcommon=*/0);
 
           // translational jdv = jacDot * qvel
           mju_dotSparseX3(jdv1, jdv1+1, jdv1+2, jacdot1, jacdot1+NV, jacdot1+2*NV,
@@ -1467,35 +1467,41 @@ static int noDofs(const mjModel* m, const int* body, int n) {
 }
 
 
+// return 1 and populate bid[2] if contact has a single non-interpolated, non-twist body per side
+static inline int contactSingleBody(const mjModel* m, const mjContact* con, int bid[2]) {
+  for (int side=0; side < 2; side++) {
+    if (con->geom[side] >= 0) {
+      bid[side] = m->geom_bodyid[con->geom[side]];
+    } else if (con->vert[side] >= 0 && m->flex_interp[con->flex[side]] == 0 &&
+               !mj_rodHasTwist(m, con->flex[side])) {
+      bid[side] = m->flex_vertbodyid[m->flex_vertadr[con->flex[side]] + con->vert[side]];
+    } else {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+
 // compute Jacobian for contact, return number of DOFs affected
 int mj_contactJacobian(const mjModel* m, mjData* d, const mjContact* con, int dim,
                        mjtNum* jacdifp, mjtNum* jacdifr,
                        mjtNum* jac1p, mjtNum* jac2p,
                        mjtNum* jac1r, mjtNum* jac2r, int* chain) {
   // special case: single body on each side
-  if ((con->geom[0] >= 0 || (con->vert[0] >= 0 && m->flex_interp[con->flex[0]] == 0 &&
-                             !mj_rodHasTwist(m, con->flex[0]))) &&
-      (con->geom[1] >= 0 || (con->vert[1] >= 0 && m->flex_interp[con->flex[1]] == 0 &&
-                             !mj_rodHasTwist(m, con->flex[1])))) {
-    // get bodies
-    int bid[2];
-    for (int side=0; side < 2; side++) {
-      bid[side] = (con->geom[side] >= 0) ?
-                  m->geom_bodyid[con->geom[side]] :
-                  m->flex_vertbodyid[m->flex_vertadr[con->flex[side]] + con->vert[side]];
-    }
-
+  int body[2];
+  if (contactSingleBody(m, con, body)) {
     // no relative dofs: return 0
-    if (noDofs(m, bid, 2)) {
+    if (noDofs(m, body, 2)) {
       return 0;
     }
 
     // compute Jacobian differences, skipping common DOFs
     if (dim > 3) {
-      return mj_jacDifPair(m, d, chain, bid[0], bid[1], con->pos, con->pos,
+      return mj_jacDifPair(m, d, chain, body[0], body[1], con->pos, con->pos,
                            jac1p, jac2p, jacdifp, jac1r, jac2r, jacdifr, mj_isSparse(m), 1);
     } else {
-      return mj_jacDifPair(m, d, chain, bid[0], bid[1], con->pos, con->pos,
+      return mj_jacDifPair(m, d, chain, body[0], body[1], con->pos, con->pos,
                            jac1p, jac2p, jacdifp, NULL, NULL, NULL, mj_isSparse(m), 1);
     }
   }
@@ -1529,29 +1535,140 @@ int mj_contactJacobian(const mjModel* m, mjData* d, const mjContact* con, int di
 }
 
 
+// dense single-body-per-side contact instantiation: fuse Jacobian walk, frame rotation, and cone
+static void instantiateContactDense(const mjModel* m, mjData* d, const mjContact* con,
+                                    int conid, const int bid[2], int ispyramid) {
+  int nv = m->nv, dim = con->dim, nefc = d->nefc;
+  int b1 = m->body_weldid[bid[0]];
+  int b2 = m->body_weldid[bid[1]];
+  int da1 = m->body_dofnum[b1] ? m->body_dofadr[b1] + m->body_dofnum[b1] - 1 : -1;
+  int da2 = m->body_dofnum[b2] ? m->body_dofadr[b2] + m->body_dofnum[b2] - 1 : -1;
+
+  mjtNum offset1[3], offset2[3];
+  if (da1 >= 0) {
+    mji_sub3(offset1, con->pos, d->subtree_com + 3*m->body_rootid[bid[0]]);
+  }
+  if (da2 >= 0) {
+    mji_sub3(offset2, con->pos, d->subtree_com + 3*m->body_rootid[bid[1]]);
+  }
+
+  int nrows, type;
+  if (dim == 1) {
+    nrows = 1;
+    type = mjCNSTR_CONTACT_FRICTIONLESS;
+  } else if (ispyramid) {
+    nrows = 2*(dim - 1);
+    type = mjCNSTR_CONTACT_PYRAMIDAL;
+  } else {
+    nrows = dim;
+    type = mjCNSTR_CONTACT_ELLIPTIC;
+  }
+
+  // zero output rows once; only affected non-common ancestor DOFs are written
+  mjtNum* J = d->efc_J + nefc*nv;
+  mju_zero(J, nrows*nv);
+
+  const mjtNum* F = con->frame;
+  const int* dof_parentid = m->dof_parentid;
+  const mjtNum* cdof_all = d->cdof;
+  while (da1 >= 0 || da2 >= 0) {
+    // common ancestor: body 1 and body 2 share subtree_com so jac2 - jac1 == 0
+    if (da1 == da2) {
+      break;
+    }
+
+    int dof;
+    mjtNum jp[3], jr[3];
+    if (da2 > da1) {
+      dof = da2;
+      da2 = dof_parentid[da2];
+      const mjtNum* cdof = cdof_all + 6*dof;
+      mjtNum tmp[3];
+      mji_cross(tmp, cdof, offset2);
+      mji_add3(jp, cdof + 3, tmp);
+      if (dim > 3) {
+        mji_copy3(jr, cdof);
+      }
+    } else {
+      dof = da1;
+      da1 = dof_parentid[da1];
+      const mjtNum* cdof = cdof_all + 6*dof;
+      mjtNum tmp[3];
+      mji_cross(jp, cdof, offset1);
+      mji_add3(tmp, cdof + 3, jp);
+      mji_scl3(jp, tmp, -1);
+      if (dim > 3) {
+        mji_scl3(jr, cdof, -1);
+      }
+    }
+
+    // rotate into contact frame and write directly into d->efc_J
+    if (dim == 1) {
+      J[dof] = mju_dot3(F, jp);
+    } else {
+      mjtNum j[3];
+      mji_mulMatVec3(j, F, jp);
+      if (ispyramid) {
+        mjtNum mu0 = con->friction[0], mu1 = con->friction[1];
+        J[0*nv + dof] = j[0] + j[1]*mu0;
+        J[1*nv + dof] = j[0] + j[1]*(-mu0);
+        J[2*nv + dof] = j[0] + j[2]*mu1;
+        J[3*nv + dof] = j[0] + j[2]*(-mu1);
+        if (dim > 3) {
+          for (int k=3; k < dim; k++) {
+            mjtNum jk = mju_dot3(F + 3*(k-3), jr);
+            mjtNum muk = con->friction[k-1];
+            J[(2*k-2)*nv + dof] = j[0] + jk*muk;
+            J[(2*k-1)*nv + dof] = j[0] + jk*(-muk);
+          }
+        }
+      } else {
+        J[0*nv + dof] = j[0];
+        J[1*nv + dof] = j[1];
+        J[2*nv + dof] = j[2];
+        if (dim > 3) {
+          for (int r=3; r < dim; r++) {
+            J[r*nv + dof] = mju_dot3(F + 3*(r-3), jr);
+          }
+        }
+      }
+    }
+  }
+
+  // set constraint metadata
+  if (type == mjCNSTR_CONTACT_ELLIPTIC) {
+    d->efc_pos[nefc] = con->dist;
+    d->efc_margin[nefc] = con->includemargin;
+    for (int r=1; r < nrows; r++) {
+      d->efc_pos[nefc+r] = 0;
+      d->efc_margin[nefc+r] = 0;
+    }
+  } else {
+    for (int r=0; r < nrows; r++) {
+      d->efc_pos[nefc+r] = con->dist;
+      d->efc_margin[nefc+r] = con->includemargin;
+    }
+  }
+  for (int r=0; r < nrows; r++) {
+    d->efc_frictionloss[nefc+r] = 0;
+    d->efc_type[nefc+r] = type;
+    d->efc_id[nefc+r] = conid;
+  }
+  d->nefc += nrows;
+}
+
+
 // frictionless and frictional contacts
 void mj_instantiateContact(const mjModel* m, mjData* d) {
   int ispyramid = mj_isPyramidal(m), issparse = mj_isSparse(m), ncon = d->ncon;
   int dim, NV, nv = m->nv, *chain = NULL;
   mjContact* con;
-  mjtNum cpos[6], cmargin[6], *jac, *jacdifp, *jacdifr, *jac1p, *jac2p, *jac1r, *jac2r;
+  mjtNum cpos[6], cmargin[6];
+  mjtNum *jac = NULL, *jacdifp = NULL, *jacdifr = NULL;
+  mjtNum *jac1p = NULL, *jac2p = NULL, *jac1r = NULL, *jac2r = NULL;
 
   if (mjDISABLED(mjDSBL_CONTACT) || ncon == 0 || nv == 0) {
     return;
-  }
-
-  mj_markStack(d);
-
-  // allocate Jacobian
-  jac = mjSTACKALLOC(d, 6*nv, mjtNum);
-  jacdifp = mjSTACKALLOC(d, 3*nv, mjtNum);
-  jacdifr = mjSTACKALLOC(d, 3*nv, mjtNum);
-  jac1p = mjSTACKALLOC(d, 3*nv, mjtNum);
-  jac2p = mjSTACKALLOC(d, 3*nv, mjtNum);
-  jac1r = mjSTACKALLOC(d, 3*nv, mjtNum);
-  jac2r = mjSTACKALLOC(d, 3*nv, mjtNum);
-  if (issparse) {
-    chain = mjSTACKALLOC(d, nv, int);
   }
 
   // find contacts to be included
@@ -1564,6 +1681,34 @@ void mj_instantiateContact(const mjModel* m, mjData* d) {
     con = d->contact + i;
     dim = con->dim;
     con->efc_address = d->nefc;
+
+    // dense single-body-per-side fast path: bypass scratch buffers and mju_mulMatMat
+    int bid[2];
+    if (!issparse && contactSingleBody(m, con, bid)) {
+      if (noDofs(m, bid, 2)) {
+        con->efc_address = -1;
+        con->exclude = 3;
+        continue;
+      }
+      instantiateContactDense(m, d, con, i, bid, ispyramid);
+      continue;
+    }
+
+    // lazily allocate stack scratch for sparse or flex contacts
+    if (!jac) {
+      mj_markStack(d);
+      jac = mjSTACKALLOC(d, 6*nv, mjtNum);
+      jacdifp = mjSTACKALLOC(d, 3*nv, mjtNum);
+      jacdifr = mjSTACKALLOC(d, 3*nv, mjtNum);
+      jac1p = mjSTACKALLOC(d, 3*nv, mjtNum);
+      jac2p = mjSTACKALLOC(d, 3*nv, mjtNum);
+      jac1r = mjSTACKALLOC(d, 3*nv, mjtNum);
+      jac2r = mjSTACKALLOC(d, 3*nv, mjtNum);
+      if (issparse) {
+        chain = mjSTACKALLOC(d, nv, int);
+      }
+    }
+
     NV = mj_contactJacobian(m, d, con, dim, jacdifp, jacdifr,
                             jac1p, jac2p, jac1r, jac2r, chain);
 
@@ -1625,7 +1770,9 @@ void mj_instantiateContact(const mjModel* m, mjData* d) {
     }
   }
 
-  mj_freeStack(d);
+  if (jac) {
+    mj_freeStack(d);
+  }
 }
 
 
@@ -1837,122 +1984,54 @@ void mj_diagApprox(const mjModel* m, mjData* d) {
 }
 
 
-// get solref, solimp for specified constraint
-static void getsolparam(const mjModel* m, const mjData* d, int i,
-                        mjtNum* solref, mjtNum* solreffriction, mjtNum* solimp) {
-  // get constraint id
-  int id = d->efc_id[i];
-
-  // clear solreffriction (applies only to contacts)
-  mju_zero(solreffriction, mjNREF);
-
-  // extract solver parameters from corresponding model element
-  switch ((mjtConstraint) d->efc_type[i]) {
-  case mjCNSTR_EQUALITY:
-    mju_copy(solref, m->eq_solref+mjNREF*id, mjNREF);
-    mju_copy(solimp, m->eq_solimp+mjNIMP*id, mjNIMP);
-    break;
-
-  case mjCNSTR_LIMIT_JOINT:
-    mju_copy(solref, m->jnt_solref+mjNREF*id, mjNREF);
-    mju_copy(solimp, m->jnt_solimp+mjNIMP*id, mjNIMP);
-    break;
-
-  case mjCNSTR_FRICTION_DOF:
-    mju_copy(solref, m->dof_solref+mjNREF*id, mjNREF);
-    mju_copy(solimp, m->dof_solimp+mjNIMP*id, mjNIMP);
-    break;
-
-  case mjCNSTR_LIMIT_TENDON:
-    mju_copy(solref, m->tendon_solref_lim+mjNREF*id, mjNREF);
-    mju_copy(solimp, m->tendon_solimp_lim+mjNIMP*id, mjNIMP);
-    break;
-
-  case mjCNSTR_FRICTION_TENDON:
-    mju_copy(solref, m->tendon_solref_fri+mjNREF*id, mjNREF);
-    mju_copy(solimp, m->tendon_solimp_fri+mjNIMP*id, mjNIMP);
-    break;
-
-  case mjCNSTR_CONTACT_FRICTIONLESS:
-  case mjCNSTR_CONTACT_PYRAMIDAL:
-  case mjCNSTR_CONTACT_ELLIPTIC:
-    mju_copy(solref, d->contact[id].solref, mjNREF);
-    mju_copy(solreffriction, d->contact[id].solreffriction, mjNREF);
-    mju_copy(solimp, d->contact[id].solimp, mjNIMP);
-  }
+// validate and clamp solref, return 1 if valid (no mixed-sign warning), 0 if replaced with default
+static inline int clampSolRef(mjtNum* solref, const mjtNum* raw, int refsafe, int metric,
+                              mjtNum min_ref0, int is_friction) {
+  mjtNum r0 = raw[0], r1 = raw[1];
+  int valid = 1;
 
   // check reference format: standard or direct, cannot be mixed
-  if ((solref[0] > 0) ^ (solref[1] > 0)) {
-    mju_warning("mixed solref format, replacing with default");
-    mj_defaultSolRefImp(solref, NULL);
+  if ((r0 > 0) ^ (r1 > 0)) {
+    valid = 0;
+    if (is_friction) {
+      mju_warning("solreffriction values should have the same sign, replacing with default");
+      r0 = r1 = 0;  // default solreffriction is (0, 0)
+    } else {
+      mju_warning("mixed solref format, replacing with default");
+      mj_defaultSolRefImp(solref, NULL);
+      r0 = solref[0];
+      r1 = solref[1];
+    }
   }
 
   // integrator safety: impose ref[0]>=2*timestep for standard format. Not applied under
   // the discrete integrator: implicitly treated rows (mj_makeImpedance) are stable at
   // any timeconst, and timeconst -> 0 is their rigid limit
-  int metric = mj_isMetric(m);
-  if (!mjDISABLED(mjDSBL_REFSAFE) && solref[0] > 0 && !metric) {
-    solref[0] = mju_max(solref[0], 2*m->opt.timestep);
+  if (refsafe && r0 > 0 && !metric) {
+    r0 = mju_max(r0, min_ref0);
   }
 
-  // check reference format: standard or direct, cannot be mixed
-  if ((solreffriction[0] > 0) ^ (solreffriction[1] > 0)) {
-    mju_warning("solreffriction values should have the same sign, replacing with default");
-    mju_zero(solreffriction, mjNREF);  // default solreffriction is (0, 0)
-  }
-
-  // integrator safety: impose ref[0]>=2*timestep for standard format
-  if (!mjDISABLED(mjDSBL_REFSAFE) && solreffriction[0] > 0 && !metric) {
-    solreffriction[0] = mju_max(solreffriction[0], 2*m->opt.timestep);
-  }
-
-  // enforce constraints on solimp
-  solimp[0] = mju_min(mjMAXIMP, mju_max(mjMINIMP, solimp[0]));
-  solimp[1] = mju_min(mjMAXIMP, mju_max(mjMINIMP, solimp[1]));
-  solimp[2] = mju_max(0, solimp[2]);
-  solimp[3] = mju_min(mjMAXIMP, mju_max(mjMINIMP, solimp[3]));
-  solimp[4] = mju_max(1, solimp[4]);
+  solref[0] = r0;
+  solref[1] = r1;
+  return valid;
 }
 
 
-// get pos and dim for specified constraint
-static void getposdim(const mjModel* m, const mjData* d, int i, mjtNum* pos, int* dim) {
-  // get id of constraint-related object
-  int id = d->efc_id[i];
-
-  // set (dim, pos) for common case
-  *dim = 1;
-  *pos = d->efc_pos[i];
-
-  // change (dim, distance) for special cases
-  switch ((mjtConstraint) d->efc_type[i]) {
-  case mjCNSTR_CONTACT_ELLIPTIC:
-    *dim = d->contact[id].dim;
-    break;
-
-  case mjCNSTR_CONTACT_PYRAMIDAL:
-    *dim = 2*(d->contact[id].dim-1);
-    break;
-
-  case mjCNSTR_EQUALITY:
-    if (m->eq_type[id] == mjEQ_WELD) {
-      *dim = 6;
-      *pos = mju_norm(d->efc_pos+i, 6);
-    } else if (m->eq_type[id] == mjEQ_CONNECT) {
-      *dim = 3;
-      *pos = mju_norm(d->efc_pos+i, 3);
-    }
-    break;
-  default:
-    // already handled
-    break;
+// compute B from clamped solref and solimp[1]
+static inline mjtNum computeB(const mjtNum* ref, mjtNum dmax) {
+  // standard: B = 2 / (d_width*timeconst)
+  if (ref[1] > 0) {
+    return 2 / mju_max(mjMINVAL, dmax*ref[0]);
   }
+
+  // direct: B = -solref[1] / d_width
+  return -ref[1] / mju_max(mjMINVAL, dmax);
 }
 
 
 // return a to the power of b, quick return for powers 1 and 2
 // solimp[4] == 2 is the default, so these branches are common
-static mjtNum power(mjtNum a, mjtNum b) {
+static inline mjtNum power(mjtNum a, mjtNum b) {
   if (b == 1) {
     return a;
   } else if (b == 2) {
@@ -1962,55 +2041,90 @@ static mjtNum power(mjtNum a, mjtNum b) {
 }
 
 
-// compute impedance and derivative for one constraint
-static void getimpedance(const mjtNum* solimp, mjtNum pos, mjtNum margin,
-                         mjtNum* imp, mjtNum* impP) {
+// compute impedance and derivative for one constraint using precomputed power denominators (a, b)
+static inline void getimpedance(const mjtNum* solimp, mjtNum pos, mjtNum margin,
+                                int is_flat, mjtNum a, mjtNum b, mjtNum* imp, mjtNum* impP) {
   // flat function
-  if (solimp[0] == solimp[1] || solimp[2] <= mjMINVAL) {
+  if (is_flat) {
     *imp = 0.5*(solimp[0] + solimp[1]);
     *impP = 0;
     return;
   }
 
-  // x = abs((pos-margin) / width)
-  mjtNum x = (pos-margin) / solimp[2];
-  mjtNum sgn = 1;
-  if (x < 0) {
-    x = -x;
-    sgn = -1;
+  // zero error: exact quick return without dividing by width
+  mjtNum dif = pos - margin;
+  if (dif == 0) {
+    *imp = solimp[0];
+    *impP = 0;
+    return;
   }
 
-  // fully saturated
+  // saturated error: quick return without dividing by width
+  mjtNum abs_dif = mju_abs(dif);
+  if (abs_dif >= solimp[2]) {
+    *imp = solimp[1];
+    *impP = 0;
+    return;
+  }
+
+  // x = abs((pos-margin) / width)
+  mjtNum x = abs_dif / solimp[2];
+  mjtNum sgn = (dif < 0) ? -1 : 1;
+
+  // fully saturated (handles rounding of abs_dif / width up to 1)
   if (x >= 1 || x <= 0) {
     *imp = (x >= 1 ? solimp[1] : solimp[0]);
     *impP = 0;
     return;
   }
 
-  // linear
+  // quadratic (default: solimp[4] == 2)
   mjtNum y, yP;
-  if (solimp[4] == 1) {
+  if (solimp[4] == 2) {
+    // y(x) = a*x^2 if x <= midpoint
+    if (x <= solimp[3]) {
+      y = a*(x*x);
+      yP = 2*a*x;
+    }
+
+    // y(x) = 1 - b*(1-x)^2 if x > midpoint
+    else {
+      mjtNum omx = 1 - x;
+      y = 1 - b*(omx*omx);
+      yP = 2*b*omx;
+    }
+  }
+
+  // linear
+  else if (solimp[4] == 1) {
     y = x;
     yP = 1;
   }
 
   // y(x) = a*x^p if x<=midpoint
   else if (x <= solimp[3]) {
-    mjtNum a = 1/power(solimp[3], solimp[4]-1);
     y = a*power(x, solimp[4]);
     yP = solimp[4] * a*power(x, solimp[4]-1);
   }
 
   // y(x) = 1-b*(1-x)^p if x>midpoint
   else {
-    mjtNum b = 1/power(1-solimp[3], solimp[4]-1);
-    y = 1-b*power(1-x, solimp[4]);
+    y = 1 - b*power(1-x, solimp[4]);
     yP = solimp[4] * b*power(1-x, solimp[4]-1);
   }
 
   // scale
   *imp = solimp[0] + y*(solimp[1]-solimp[0]);
   *impP = yP * sgn * (solimp[1]-solimp[0]) / solimp[2];
+}
+
+
+// write K, B, I = imp, P = imp' to one efc_KBIP row
+static inline void setKBIP(mjtNum* kbip, mjtNum K, mjtNum B, mjtNum imp, mjtNum impP) {
+  kbip[0] = K;
+  kbip[1] = B;
+  kbip[2] = imp;
+  kbip[3] = impP;
 }
 
 
@@ -2022,162 +2136,354 @@ static inline mjtNum implicitFactor(const mjtNum* kbip, mjtNum h) {
 
 // compute efc_R, efc_D, efc_KBIP, adjust efc_diagA
 void mj_makeImpedance(const mjModel* m, mjData* d) {
-  int dim, nefc = d->nefc;
-  mjtNum *R = d->efc_R, *KBIP = d->efc_KBIP;
-  mjtNum pos, imp, impP, Rpy, solref[mjNREF], solreffriction[mjNREF], solimp[mjNIMP];
+  int nefc = d->nefc;
+  if (!nefc) {
+    return;
+  }
+
+  mjtNum* restrict R = d->efc_R;
+  mjtNum* restrict D = d->efc_D;
+  mjtNum* restrict diagA = d->efc_diagA;
+  mjtNum* restrict KBIP = d->efc_KBIP;
+  const mjtNum* restrict efc_pos = d->efc_pos;
+  const mjtNum* restrict efc_margin = d->efc_margin;
+  const int* restrict efc_type = d->efc_type;
+  const int* restrict efc_id = d->efc_id;
+  mjContact* restrict contact = d->contact;
+
+  // hoist model-wide options outside the constraint loop
   int metric = mj_isMetric(m);
+  int refsafe = !mjDISABLED(mjDSBL_REFSAFE);
   mjtNum h = m->opt.timestep;
+  mjtNum h2 = h*h;
+  mjtNum min_ref0 = 2*h;
+  mjtNum impratio = m->opt.impratio;
+  int impratio_is_one = (impratio == 1);
+  mjtNum impratio_den = mju_max(mjMINVAL, impratio);
+  mjtNum rmin_ratio = (1 - mjMAXIMP) / mjMAXIMP;
 
-  // set efc_R, efc_KBIP
+  // per-call cache of validated/clamped (solref, solimp) and derived K, B, power denominators
+  int cache_valid = 0;
+  int c_flat = 0;
+  mjtNum prev_sr[mjNREF] = {0, 0};
+  mjtNum prev_si[mjNIMP] = {0, 0, 0, 0, 0};
+  mjtNum solref[mjNREF] = {0, 0};
+  mjtNum solimp[mjNIMP] = {0, 0, 0, 0, 0};
+  mjtNum c_K = 0, c_B = 0, c_a = 2, c_b = 2;
+
+  // single fused pass: set efc_KBIP, efc_R, efc_D, contact.mu, and adjust efc_diagA
   for (int i=0; i < nefc; i++) {
-    // get solref and solimp
-    getsolparam(m, d, i, solref, solreffriction, solimp);
+    // set (dim, pos) for common case and extract raw solver parameters
+    int tp = efc_type[i];
+    int id = efc_id[i];
+    int dim = 1;
+    int is_friction = 0;
+    int is_unilateral = 0;
+    mjtNum pos = efc_pos[i];
+    const mjtNum* raw_sr = NULL;
+    const mjtNum* raw_srf = NULL;
+    const mjtNum* raw_si = NULL;
+    mjContact* con = NULL;
 
-    // get pos and dim
-    getposdim(m, d, i, &pos, &dim);
-
-    // get imp and impP
-    getimpedance(solimp, pos, d->efc_margin[i], &imp, &impP);
-
-    // set R and KBIP for all constraint dimensions
-    mjtNum R0_unclamped = 0;
-    for (int j=0; j < dim; j++) {
-      // R = (1-imp)/imp * diagApprox
-      R[i+j] = mju_max(mjMINVAL, (1-imp)*d->efc_diagA[i+j]/imp);
-
-      // constraint type
-      int tp = d->efc_type[i+j];
-
-      // elliptic contacts use solreffriction in non-normal directions, if non-zero
-      int elliptic_friction = (tp == mjCNSTR_CONTACT_ELLIPTIC) && (j > 0);
-      mjtNum* ref = elliptic_friction && (solreffriction[0] || solreffriction[1]) ?
-                    solreffriction : solref;
-
-      // friction: K = 0
-      if (tp == mjCNSTR_FRICTION_DOF || tp == mjCNSTR_FRICTION_TENDON || elliptic_friction) {
-        KBIP[4*(i+j)] = 0;
+    // extract solver parameters, pos, and dim from corresponding model element
+    switch ((mjtConstraint) tp) {
+    case mjCNSTR_EQUALITY:
+      raw_sr = m->eq_solref + mjNREF*id;
+      raw_si = m->eq_solimp + mjNIMP*id;
+      if (m->eq_type[id] == mjEQ_WELD) {
+        dim = 6;
+        pos = mju_norm(efc_pos+i, 6);
+      } else if (m->eq_type[id] == mjEQ_CONNECT) {
+        dim = 3;
+        pos = mju_norm(efc_pos+i, 3);
       }
+      break;
+
+    case mjCNSTR_LIMIT_JOINT:
+      raw_sr = m->jnt_solref + mjNREF*id;
+      raw_si = m->jnt_solimp + mjNIMP*id;
+      is_unilateral = 1;
+      break;
+
+    case mjCNSTR_FRICTION_DOF:
+      raw_sr = m->dof_solref + mjNREF*id;
+      raw_si = m->dof_solimp + mjNIMP*id;
+      is_friction = 1;
+      break;
+
+    case mjCNSTR_LIMIT_TENDON:
+      raw_sr = m->tendon_solref_lim + mjNREF*id;
+      raw_si = m->tendon_solimp_lim + mjNIMP*id;
+      is_unilateral = 1;
+      break;
+
+    case mjCNSTR_FRICTION_TENDON:
+      raw_sr = m->tendon_solref_fri + mjNREF*id;
+      raw_si = m->tendon_solimp_fri + mjNIMP*id;
+      is_friction = 1;
+      break;
+
+    case mjCNSTR_CONTACT_FRICTIONLESS:
+      con = contact + id;
+      raw_sr = con->solref;
+      raw_srf = con->solreffriction;
+      raw_si = con->solimp;
+      is_unilateral = 1;
+      break;
+
+    case mjCNSTR_CONTACT_PYRAMIDAL:
+      con = contact + id;
+      raw_sr = con->solref;
+      raw_srf = con->solreffriction;
+      raw_si = con->solimp;
+      dim = 2*(con->dim - 1);
+      is_unilateral = 1;
+      break;
+
+    case mjCNSTR_CONTACT_ELLIPTIC:
+      con = contact + id;
+      raw_sr = con->solref;
+      raw_srf = con->solreffriction;
+      raw_si = con->solimp;
+      dim = con->dim;
+      is_unilateral = 1;
+      break;
+    }
+
+    // reuse clamped solref/solimp and precomputed K, B when raw params match previous constraint
+    if (!cache_valid ||
+        raw_sr[0] != prev_sr[0] || raw_sr[1] != prev_sr[1] ||
+        raw_si[0] != prev_si[0] || raw_si[1] != prev_si[1] ||
+        raw_si[2] != prev_si[2] || raw_si[3] != prev_si[3] ||
+        raw_si[4] != prev_si[4]) {
+      int valid = clampSolRef(solref, raw_sr, refsafe, metric, min_ref0, /*is_friction=*/0);
+
+      // enforce constraints on solimp
+      solimp[0] = mju_min(mjMAXIMP, mju_max(mjMINIMP, raw_si[0]));
+      solimp[1] = mju_min(mjMAXIMP, mju_max(mjMINIMP, raw_si[1]));
+      solimp[2] = mju_max(0, raw_si[2]);
+      solimp[3] = mju_min(mjMAXIMP, mju_max(mjMINIMP, raw_si[3]));
+      solimp[4] = mju_max(1, raw_si[4]);
 
       // standard: K = 1 / (d_width^2 * timeconst^2 * dampratio^2)
-      else if (ref[0] > 0)
-        KBIP[4*(i+j)] = 1 / mju_max(mjMINVAL, solimp[1]*solimp[1] * ref[0]*ref[0] * ref[1]*ref[1]);
+      // direct:   K = -solref[0] / d_width^2
+      if (solref[0] > 0) {
+        c_K = 1 / mju_max(mjMINVAL,
+                          solimp[1]*solimp[1] * solref[0]*solref[0] * solref[1]*solref[1]);
+      } else {
+        c_K = -solref[0] / mju_max(mjMINVAL, solimp[1]*solimp[1]);
+      }
+      c_B = computeB(solref, solimp[1]);
 
-      // direct: K = -solref[0] / d_width^2
-      else {
-        KBIP[4*(i+j)] = -ref[0] / mju_max(mjMINVAL, solimp[1]*solimp[1]);
+      // precompute impedance flat flag and power denominators
+      c_flat = (solimp[0] == solimp[1] || solimp[2] <= mjMINVAL);
+      if (solimp[4] == 2) {
+        c_a = (solimp[3] == 0.5) ? 2 : 1 / solimp[3];
+        c_b = (solimp[3] == 0.5) ? 2 : 1 / (1 - solimp[3]);
+      } else if (solimp[4] != 1) {
+        c_a = 1 / power(solimp[3], solimp[4] - 1);
+        c_b = 1 / power(1 - solimp[3], solimp[4] - 1);
       }
 
-      // standard: B = 2 / (d_width*timeconst)
-      if (ref[1] > 0) {
-        KBIP[4*(i+j)+1] = 2 / mju_max(mjMINVAL, solimp[1]*ref[0]);
+      // update cache only for valid (non-mixed) solref so warnings still fire
+      if (valid) {
+        prev_sr[0] = raw_sr[0];
+        prev_sr[1] = raw_sr[1];
+        prev_si[0] = raw_si[0];
+        prev_si[1] = raw_si[1];
+        prev_si[2] = raw_si[2];
+        prev_si[3] = raw_si[3];
+        prev_si[4] = raw_si[4];
+        cache_valid = 1;
+      } else {
+        cache_valid = 0;
       }
+    }
 
-      // direct: B = -solref[1] / d_width
-      else {
-        KBIP[4*(i+j)+1] = -ref[1] / mju_max(mjMINVAL, solimp[1]);
+    // validate contact solreffriction only when non-zero (zero is the default and always valid)
+    mjtNum srf[mjNREF] = {0, 0};
+    int has_srf = 0;
+    if (raw_srf && (raw_srf[0] != 0 || raw_srf[1] != 0)) {
+      clampSolRef(srf, raw_srf, refsafe, metric, min_ref0, /*is_friction=*/1);
+      has_srf = (srf[0] != 0 || srf[1] != 0);
+    }
+
+    // get imp and impP
+    mjtNum imp, impP;
+    getimpedance(solimp, pos, efc_margin[i], c_flat, c_a, c_b, &imp, &impP);
+    mjtNum om_imp = 1 - imp;
+
+    // per-constraint K, B (hoisted out of j < dim; friction: K = 0)
+    mjtNum K0 = is_friction ? 0 : c_K;
+    mjtNum B0 = c_B;
+
+    // discrete: implicit row factor and refsafe clamping (hoisted out of j < dim)
+    mjtNum f_unclamped = 1, f0 = 1;
+    if (metric) {
+      f0 = f_unclamped = 1 + h*B0 + h2*K0*imp;
+
+      // refsafe: a contact or limit row whose spring the step cannot resolve
+      // (h^2*K*I > 1) rebounds on impact with restitution (h^2*K*I - 1)/f. Replace it
+      // by the resolved row: timeconst shortened to the stiffest zero-restitution
+      // value, damping ratio kept (K /= excess, B /= sqrt(excess)), damping bounded by
+      // the impedance ceiling so that the statics stay exact
+      if (refsafe && solref[0] > 0 && K0 > 0 && is_unilateral) {
+        mjtNum excess = h2*K0*imp;
+        if (excess > 1) {
+          mjtNum fmax = mjMAXIMP*om_imp / mju_max(mjMINVAL, imp*(1 - mjMAXIMP));
+          K0 = 1 / (h2*imp);
+          B0 = mju_min(B0/mju_sqrt(excess), mju_max(0, fmax-2)/h);
+          f0 = 1 + h*B0 + h2*K0*imp;
+        }
       }
+    }
 
-      // I = imp, P = imp'
-      KBIP[4*(i+j)+2] = imp;
-      KBIP[4*(i+j)+3] = impP;
+    // pyramidal: common R matching friction impedance of elliptic model
+    if (tp == mjCNSTR_CONTACT_PYRAMIDAL) {
+      // R = (1-imp)/imp * diagApprox for row 0
+      mjtNum R0 = mju_max(mjMINVAL, om_imp*diagA[i]/imp);
 
       // discrete: implicit row factor R <- R/f (matching reference in mj_referenceConstraint).
       // Floor at mjMAXIMP ceiling to keep weights well-conditioned as timeconst -> 0
       if (metric) {
-        mjtNum* kbip = KBIP + 4*(i+j);
-        mjtNum f_unclamped = implicitFactor(kbip, h);
+        mjtNum Rmin = mju_max(mjMINVAL, rmin_ratio*diagA[i]);
+        R0 = mju_max(R0/f0, Rmin);
+      }
 
-        // refsafe: a contact or limit row whose spring the step cannot resolve
-        // (h^2*K*I > 1) rebounds on impact with restitution (h^2*K*I - 1)/f. Replace it
-        // by the resolved row: timeconst shortened to the stiffest zero-restitution
-        // value, damping ratio kept (K /= excess, B /= sqrt(excess)), damping bounded by
-        // the impedance ceiling so that the statics stay exact
-        if (!mjDISABLED(mjDSBL_REFSAFE) && ref[0] > 0 && kbip[0] > 0 &&
-            (tp == mjCNSTR_LIMIT_JOINT          ||
-             tp == mjCNSTR_LIMIT_TENDON         ||
-             tp == mjCNSTR_CONTACT_FRICTIONLESS ||
-             tp == mjCNSTR_CONTACT_PYRAMIDAL    ||
-             tp == mjCNSTR_CONTACT_ELLIPTIC)) {
-          mjtNum excess = (h*h)*kbip[0]*kbip[2];
-          if (excess > 1) {
-            mjtNum fmax = mjMAXIMP*(1-kbip[2]) / mju_max(mjMINVAL, kbip[2]*(1-mjMAXIMP));
-            kbip[0] = 1 / (h*h*kbip[2]);
-            kbip[1] = mju_min(kbip[1]/mju_sqrt(excess), mju_max(0, fmax-2)/h);
-          }
-        }
+      // set R[1] = R[0]/impratio and mu of regularized cone = mu[1]*sqrt(R[1]/R[0])
+      const mjtNum* friction = con->friction;
+      mjtNum mu;
+      if (impratio_is_one) {
+        mu = friction[0];
+      } else {
+        mjtNum R1 = R0 / impratio_den;
+        mu = friction[0] * mju_sqrt(R1 / R0);
+      }
+      con->mu = mu;
 
-        mjtNum f = implicitFactor(kbip, h);
-        mjtNum Rmin = mju_max(mjMINVAL, (1-mjMAXIMP)*d->efc_diagA[i+j]/mjMAXIMP);
-        if (j == 0) {
-          R0_unclamped = mju_max(R[i]/f_unclamped, Rmin);
-        }
-        R[i+j] = mju_max(R[i+j]/f, Rmin);
-      } else if (j == 0) {
-        R0_unclamped = R[i];
+      // D0_el = 2*(dim-1)*D_py : normal match
+      // D0_el = 2*mu^2*D_py    : friction match
+      mjtNum Rpy = 2*mu*mu*R0;
+
+      // set D = 1 / R and adjust diagA so that R = (1-imp)/imp * diagA
+      mjtNum Dpy = 1 / Rpy;
+      mjtNum dApy = Rpy * imp / om_imp;
+
+      // assign KBIP, Rpy, Dpy, diagA to all pyramidal rows
+      for (int j=0; j < dim; j++) {
+        setKBIP(KBIP + 4*(i+j), K0, B0, imp, impP);
+        R[i+j] = Rpy;
+        D[i+j] = Dpy;
+        diagA[i+j] = dApy;
       }
     }
 
-    // stash unclamped normal R in R[i+1] for elliptic tangential friction scaling
-    if (d->efc_type[i] == mjCNSTR_CONTACT_ELLIPTIC) {
-      R[i+1] = R0_unclamped;
+    // elliptic: normal row uses (K0, B0), friction rows use (0, Bf) and scaled R
+    else if (tp == mjCNSTR_CONTACT_ELLIPTIC) {
+      // R = (1-imp)/imp * diagApprox for normal row
+      mjtNum R_base = mju_max(mjMINVAL, om_imp*diagA[i]/imp);
+      mjtNum R0, R0_unclamped;
+
+      // discrete: implicit row factor R <- R/f (matching reference in mj_referenceConstraint).
+      // Floor at mjMAXIMP ceiling to keep weights well-conditioned as timeconst -> 0
+      if (metric) {
+        mjtNum Rmin = mju_max(mjMINVAL, rmin_ratio*diagA[i]);
+        R0_unclamped = mju_max(R_base/f_unclamped, Rmin);
+        R0 = (f0 == f_unclamped) ? R0_unclamped : mju_max(R_base/f0, Rmin);
+      } else {
+        R0_unclamped = R0 = R_base;
+      }
+
+      // normal row: set KBIP, R, D = 1 / R, and adjust diagA so that R = (1-imp)/imp * diagA
+      setKBIP(KBIP + 4*i, K0, B0, imp, impP);
+      mjtNum D0 = 1 / R0;
+      mjtNum dA0 = R0 * imp / om_imp;
+      R[i] = R0;
+      D[i] = D0;
+      diagA[i] = dA0;
+
+      // elliptic contacts use solreffriction in non-normal directions, if non-zero
+      mjtNum Bf = has_srf ? computeB(srf, solimp[1]) : c_B;
+
+      // set R[1] = R[0]/impratio (using unclamped normal R[0]) and mu = mu[1]*sqrt(R[1]/R[0])
+      const mjtNum* friction = con->friction;
+      mjtNum R1 = impratio_is_one ? R0_unclamped : R0_unclamped / impratio_den;
+      mjtNum D1, dA1;
+      if (R1 == R0) {
+        con->mu = friction[0];
+        D1 = D0;
+        dA1 = dA0;
+      } else {
+        con->mu = friction[0] * mju_sqrt(R1 / R0);
+        D1 = 1 / R1;
+        dA1 = R1 * imp / om_imp;
+      }
+
+      // first friction row (friction: K = 0)
+      setKBIP(KBIP + 4*(i+1), 0, Bf, imp, impP);
+      R[i+1] = R1;
+      D[i+1] = D1;
+      diagA[i+1] = dA1;
+
+      // set remaining R's such that R[j]*mu[j]^2 = R[1]*mu[1]^2
+      mjtNum mu0 = friction[0];
+      mjtNum num = (R1*mu0)*mu0;
+      for (int j=1; j < dim-1; j++) {
+        setKBIP(KBIP + 4*(i+j+1), 0, Bf, imp, impP);
+
+        // reuse R[1] when friction is 1, or previous row when equal, else scale
+        mjtNum fj = friction[j];
+        if (mu0 == 1 && fj == 1) {
+          R[i+j+1] = R1;
+          D[i+j+1] = D1;
+          diagA[i+j+1] = dA1;
+        } else if (j > 1 && fj == friction[j-1]) {
+          R[i+j+1] = R[i+j];
+          D[i+j+1] = D[i+j];
+          diagA[i+j+1] = diagA[i+j];
+        } else {
+          mjtNum Rj = num / (fj*fj);
+          R[i+j+1] = Rj;
+          D[i+j+1] = 1 / Rj;
+          diagA[i+j+1] = Rj * imp / om_imp;
+        }
+      }
+    }
+
+    // scalar / non-frictional-contact constraints (equality, friction, limit, frictionless)
+    else {
+      mjtNum prev_dA = -1;
+      mjtNum r = 0, dval = 0, da_new = 0;
+      for (int j=0; j < dim; j++) {
+        setKBIP(KBIP + 4*(i+j), K0, B0, imp, impP);
+
+        // recompute R, D, diagA only when diagA changes across constraint rows
+        mjtNum dAj = diagA[i+j];
+        if (j == 0 || dAj != prev_dA) {
+          prev_dA = dAj;
+
+          // R = (1-imp)/imp * diagApprox
+          r = mju_max(mjMINVAL, om_imp*dAj/imp);
+
+          // discrete: implicit row factor R <- R/f (matching reference in mj_referenceConstraint).
+          // Floor at mjMAXIMP ceiling to keep weights well-conditioned as timeconst -> 0
+          if (metric) {
+            mjtNum Rmin = mju_max(mjMINVAL, rmin_ratio*dAj);
+            r = mju_max(r/f0, Rmin);
+          }
+
+          // set D = 1 / R and adjust diagA so that R = (1-imp)/imp * diagA
+          dval = 1 / r;
+          da_new = r * imp / om_imp;
+        }
+        R[i+j] = r;
+        D[i+j] = dval;
+        diagA[i+j] = da_new;
+      }
     }
 
     // skip the rest of this constraint
-    i += (dim-1);
-  }
-
-  // frictional contacts: adjust R in friction dimensions, set contact master mu
-  for (int i=d->ne+d->nf; i < nefc; i++) {
-    if (d->efc_type[i] == mjCNSTR_CONTACT_PYRAMIDAL ||
-        d->efc_type[i] == mjCNSTR_CONTACT_ELLIPTIC) {
-      // extract id, dim, mu
-      int id = d->efc_id[i];
-      dim = d->contact[id].dim;
-      mjtNum* friction = d->contact[id].friction;
-
-      // set R[1] = R[0]/impratio (using unclamped normal R[0] for elliptic contacts)
-      mjtNum R0 = (d->efc_type[i] == mjCNSTR_CONTACT_ELLIPTIC) ? R[i+1] : R[i];
-      R[i+1] = R0/mju_max(mjMINVAL, m->opt.impratio);
-
-      // set mu of regularized cone = mu[1]*sqrt(R[1]/R[0])
-      d->contact[id].mu = friction[0] * mju_sqrt(R[i+1]/R[i]);
-
-      // elliptic
-      if (d->efc_type[i] == mjCNSTR_CONTACT_ELLIPTIC) {
-        // set remaining R's such that R[j]*mu[j]^2 = R[1]*mu[1]^2
-        for (int j=1; j < dim-1; j++) {
-          R[i+j+1] = R[i+1]*friction[0]*friction[0]/(friction[j]*friction[j]);
-        }
-
-        // skip the rest of this contact
-        i += (dim-1);
-      }
-
-      // pyramidal: common R matching friction impedance of elliptic model
-      else {
-        // D0_el = 2*(dim-1)*D_py : normal match
-        // D0_el = 2*mu^2*D_py    : friction match
-        Rpy = 2*d->contact[id].mu*d->contact[id].mu*R[i];
-
-        // assign Rpy to all pyramidal R
-        for (int j=0; j < 2*(dim-1); j++) {
-          R[i+j] = Rpy;
-        }
-
-        // skip the rest of this contact
-        i += 2*(dim-1) - 1;
-      }
-    }
-  }
-
-  // set D = 1 / R
-  for (int i=0; i < nefc; i++) {
-    d->efc_D[i] = 1 / R[i];
-  }
-
-  // adjust diagA so that R = (1-imp)/imp * diagA
-  for (int i=0; i < nefc; i++) {
-    d->efc_diagA[i] = R[i] * KBIP[4*i+2] / (1-KBIP[4*i+2]);
+    i += (dim - 1);
   }
 }
 
@@ -2242,7 +2548,7 @@ void mj_regularizeConstraint(const mjModel* m, mjData* d, int flg_AR) {
   }
 
   // refresh island copies of R and D
-  if (d->nisland) {
+  if (d->nisland && d->iefc_D != d->efc_D) {
     mju_gather(d->iefc_D, d->efc_D, d->map_iefc2efc, nefc);
     mju_gather(d->iefc_R, d->efc_R, d->map_iefc2efc, nefc);
   }
@@ -2572,19 +2878,10 @@ static int mj_nc(const mjModel* m, mjData* d, int* nnz) {
     int NV = 0;
     if (nnz) {
       // single body on each side (geom-geom or flex vert-vert): skip common dofs
-      if ((con->geom[0] >= 0 || (con->vert[0] >= 0 && m->flex_interp[con->flex[0]] == 0 &&
-                                 !mj_rodHasTwist(m, con->flex[0]))) &&
-          (con->geom[1] >= 0 || (con->vert[1] >= 0 && m->flex_interp[con->flex[1]] == 0 &&
-                                 !mj_rodHasTwist(m, con->flex[1])))) {
-        // get bodies
-        int bid[2];
-        for (int side=0; side < 2; side++) {
-          bid[side] = (con->geom[side] >= 0) ?
-                      m->geom_bodyid[con->geom[side]] :
-                      m->flex_vertbodyid[m->flex_vertadr[con->flex[side]] + con->vert[side]];
-        }
-        if (!noDofs(m, bid, 2)) {
-          NV = mj_jacDifPair(m, NULL, chain, bid[0], bid[1], NULL, NULL,
+      int body[2];
+      if (contactSingleBody(m, con, body)) {
+        if (!noDofs(m, body, 2)) {
+          NV = mj_jacDifPair(m, NULL, chain, body[0], body[1], NULL, NULL,
                              NULL, NULL, NULL, NULL, NULL, NULL, mj_isSparse(m), 1);
         }
       }
@@ -2737,10 +3034,11 @@ static void computeY_fill(mjtNum* Y, int* Y_colind,
 
 
 // in-place sparse back-substitution:  Y <- Y * M^{-1/2}
-static void computeY_backsub(mjtNum* Y, const int* Y_rownnz, const int* Y_rowadr,
-                             const int* Y_colind, int nefc,
-                             const mjtNum* qLD, const int* M_rownnz, const int* M_rowadr,
-                             const int* M_colind, const mjtNum* sqrtInvD) {
+static void computeY_backsub(mjtNum* restrict Y, const int* restrict Y_rownnz,
+                             const int* restrict Y_rowadr, const int* restrict Y_colind,
+                             int nefc, const mjtNum* restrict qLD,
+                             const int* restrict M_rownnz, const int* restrict M_rowadr,
+                             const int* restrict M_colind, const mjtNum* restrict sqrtInvD) {
   for (int r=0; r < nefc; r++) {
     int nnzY = Y_rownnz[r];
     int adrY = Y_rowadr[r];
@@ -3000,13 +3298,14 @@ static void mj_makeARSymbolic(const mjModel* m, mjData* d) {
 
     mj_markStack(d);
 
-    // Y transposed, pattern only
+    // Y transposed, pattern and row supernodes
     int* YT_rownnz = mjSTACKALLOC(d, nv, int);
     int* YT_rowadr = mjSTACKALLOC(d, nv, int);
     int* YT_colind = mjSTACKALLOC(d, d->nY, int);
+    int* YT_rowsuper = mjSTACKALLOC(d, nv, int);
     mju_transposeSparse(NULL, NULL, nefc, nv,
-                        YT_rownnz, YT_rowadr, YT_colind, NULL,
-                        d->efc_Y_rownnz, d->efc_Y_rowadr, d->efc_Y_colind);
+                        YT_rownnz, YT_rowadr, YT_colind, YT_rowsuper,
+                        d->efc_Y_rownnz, d->efc_Y_rowadr, d->efc_Y_colind, Y_rowsuper);
 
     // allocate AR row nonzeros and addresses on arena
     d->efc_AR_rownnz = mj_arenaAllocByte(d, sizeof(int) * nefc, _Alignof(int));
@@ -3021,7 +3320,7 @@ static void mj_makeARSymbolic(const mjModel* m, mjData* d) {
     int* diagind = mjSTACKALLOC(d, nefc, int);
     d->nA = mju_sqrMatTDSparseSymbolic(
         d->efc_AR_rownnz, d->efc_AR_rowadr, NULL, diagind,
-        nv, nefc, YT_rownnz, YT_rowadr, YT_colind, NULL,
+        nv, nefc, YT_rownnz, YT_rowadr, YT_colind, YT_rowsuper,
         d->efc_Y_rownnz, d->efc_Y_rowadr, d->efc_Y_colind, Y_rowsuper, d);
 
     // allocate A values and column indices on arena
@@ -3037,7 +3336,7 @@ static void mj_makeARSymbolic(const mjModel* m, mjData* d) {
     // A = Y * Y': symbolic phase
     mju_sqrMatTDSparseSymbolic(
         d->efc_AR_rownnz, d->efc_AR_rowadr, d->efc_AR_colind, diagind,
-        nv, nefc, YT_rownnz, YT_rowadr, YT_colind, NULL,
+        nv, nefc, YT_rownnz, YT_rowadr, YT_colind, YT_rowsuper,
         d->efc_Y_rownnz, d->efc_Y_rowadr, d->efc_Y_colind, Y_rowsuper, d);
 
     mj_freeStack(d);
@@ -3080,7 +3379,7 @@ static void mj_makeARNumeric(const mjModel* m, mjData* d) {
     mjtNum* YT = mjSTACKALLOC(d, d->nY, mjtNum);
     mju_transposeSparse(YT, d->efc_Y, nefc, nv,
                         YT_rownnz, YT_rowadr, YT_colind, NULL,
-                        d->efc_Y_rownnz, d->efc_Y_rowadr, d->efc_Y_colind);
+                        d->efc_Y_rownnz, d->efc_Y_rowadr, d->efc_Y_colind, Y_rowsuper);
 
     // diagonal positions, recovered from the stored pattern (rows are sorted)
     int* diagind = mjSTACKALLOC(d, nefc, int);
@@ -3166,7 +3465,7 @@ void mj_projectConstraint(const mjModel* m, mjData* d) {
     mj_makeImpedance(m, d);
 
     // re-gather island D/R
-    if (d->nisland) {
+    if (d->nisland && d->iefc_D != d->efc_D) {
       mju_gather(d->iefc_D, d->efc_D, d->map_iefc2efc, d->nefc);
       mju_gather(d->iefc_R, d->efc_R, d->map_iefc2efc, d->nefc);
     }
@@ -3304,12 +3603,12 @@ void mj_referenceConstraint(const mjModel* m, mjData* d) {
 //---------------------------- update constraint state ---------------------------------------------
 
 // compute efc_state, efc_force
-//  optional: cost(qacc) = s_hat(jar); cone Hessians
+//  optional: cost(qacc) = s_hat(jar)
 void mj_constraintUpdate_impl(int ne, int nf, int nefc,
                               const mjtNum* D, const mjtNum* R, const mjtNum* floss,
                               const mjtNum* jar, const int* type, const int* id,
-                              mjContact* contact, int* state, mjtNum* force, mjtNum cost[1],
-                              int flg_coneHessian) {
+                              const mjContact* contact, int* state, mjtNum* force,
+                              mjtNum cost[1]) {
   mjtNum s = 0;
 
   // no constraints: clear cost, return
@@ -3382,7 +3681,106 @@ void mj_constraintUpdate_impl(int ne, int nf, int nefc,
   }
 
   // update contact constraints (general path with elliptic cones)
-  for (int i=ne + nf; i < nefc; i++) {
+  int i = ne + nf;
+  while (i < nefc && type[i] != mjCNSTR_CONTACT_ELLIPTIC) {
+    if (jar[i] >= 0) {
+      force[i] = 0;
+      state[i] = mjCNSTRSTATE_SATISFIED;
+    } else {
+      force[i] = -D[i]*jar[i];
+      if (cost) {
+        s += 0.5*D[i]*jar[i]*jar[i];
+      }
+      state[i] = mjCNSTRSTATE_QUADRATIC;
+    }
+    i++;
+  }
+
+  // 4-wide batched path for contiguous dim=3 elliptic contacts
+  for (; i + 12 <= nefc; i += 12) {
+    if (type[i+0] != mjCNSTR_CONTACT_ELLIPTIC ||
+        type[i+3] != mjCNSTR_CONTACT_ELLIPTIC ||
+        type[i+6] != mjCNSTR_CONTACT_ELLIPTIC ||
+        type[i+9] != mjCNSTR_CONTACT_ELLIPTIC) {
+      break;
+    }
+    const mjContact* c0 = contact + id[i+0];
+    const mjContact* c1 = contact + id[i+3];
+    const mjContact* c2 = contact + id[i+6];
+    const mjContact* c3 = contact + id[i+9];
+    if (c0->dim != 3 || c1->dim != 3 || c2->dim != 3 || c3->dim != 3) {
+      break;
+    }
+
+    const mjContact* cons[4] = {c0, c1, c2, c3};
+    mjtNum U1[4], U2[4], Tsqr[4], T[4];
+    for (int lane=0; lane < 4; lane++) {
+      int r = i + 3*lane;
+      const mjtNum* fric = cons[lane]->friction;
+      U1[lane] = jar[r+1] * fric[0];
+      U2[lane] = jar[r+2] * fric[1];
+      Tsqr[lane] = U1[lane]*U1[lane] + U2[lane]*U2[lane];
+    }
+    for (int lane=0; lane < 4; lane++) {
+      T[lane] = mju_sqrt(Tsqr[lane]);
+    }
+
+    for (int lane=0; lane < 4; lane++) {
+      int r = i + 3*lane;
+      const mjContact* con = cons[lane];
+      mjtNum mu = con->mu;
+      mjtNum N = jar[r] * mu;
+      mjtNum Tl = T[lane];
+
+      // top zone
+      if (N >= mu*Tl || (Tl <= 0 && N >= 0)) {
+        force[r+0] = 0;
+        force[r+1] = 0;
+        force[r+2] = 0;
+        state[r+0] = mjCNSTRSTATE_SATISFIED;
+        state[r+1] = mjCNSTRSTATE_SATISFIED;
+        state[r+2] = mjCNSTRSTATE_SATISFIED;
+      }
+
+      // bottom zone
+      else if (mu*N + Tl <= 0 || (Tl <= 0 && N < 0)) {
+        mjtNum j0 = jar[r+0], j1 = jar[r+1], j2 = jar[r+2];
+        mjtNum d0 = D[r+0], d1 = D[r+1], d2 = D[r+2];
+        force[r+0] = -d0*j0;
+        force[r+1] = -d1*j1;
+        force[r+2] = -d2*j2;
+        if (cost) {
+          s += 0.5*d0*j0*j0;
+          s += 0.5*d1*j1*j1;
+          s += 0.5*d2*j2*j2;
+        }
+        state[r+0] = mjCNSTRSTATE_QUADRATIC;
+        state[r+1] = mjCNSTRSTATE_QUADRATIC;
+        state[r+2] = mjCNSTRSTATE_QUADRATIC;
+      }
+
+      // middle zone
+      else {
+        mjtNum f0 = con->friction[0], f1 = con->friction[1];
+        mjtNum Dm = D[r] / (mu*mu*(1 + mu*mu));
+        mjtNum NmT = N - mu*Tl;
+        if (cost) {
+          s += 0.5*Dm*NmT*NmT;
+        }
+        mjtNum u0 = U1[lane] / Tl;
+        mjtNum u1 = U2[lane] / Tl;
+        mjtNum fn = -Dm*NmT*mu;
+        force[r+0] = fn;
+        force[r+1] = -fn*u0*f0;
+        force[r+2] = -fn*u1*f1;
+        state[r+0] = mjCNSTRSTATE_CONE;
+        state[r+1] = mjCNSTRSTATE_CONE;
+        state[r+2] = mjCNSTRSTATE_CONE;
+      }
+    }
+  }
+
+  for (; i < nefc; i++) {
 
     // non-negative constraint
     if (type[i] != mjCNSTR_CONTACT_ELLIPTIC) {
@@ -3406,8 +3804,9 @@ void mj_constraintUpdate_impl(int ne, int nf, int nefc,
     // contact with elliptic cone
     else {
       // get contact
-      mjContact* con = contact + id[i];
-      mjtNum mu = con->mu, *friction = con->friction;
+      const mjContact* con = contact + id[i];
+      mjtNum mu = con->mu;
+      const mjtNum* friction = con->friction;
       int dim = con->dim;
 
       // map to regular dual cone space
@@ -3464,47 +3863,6 @@ void mj_constraintUpdate_impl(int ne, int nf, int nefc,
 
         // set state
         state[i] = mjCNSTRSTATE_CONE;
-
-        // cone Hessian
-        if (flg_coneHessian) {
-          // get Hessian pointer
-          mjtNum* H = contact[id[i]].H;
-
-          // set first row: (1, -mu * Uhat)
-          H[0] = 1;
-          for (int j=1; j < dim; j++) {
-            H[j] = -mu*Uhat[j-1];
-          }
-
-          // set upper block: (mu*N/T) * Uhat*Uhat'
-          mjtNum scl = mu*(N/T);
-          for (int k=1; k < dim; k++) {
-            for (int j=k; j < dim; j++) {
-              H[k*dim+j] = scl*Uhat[j-1]*Uhat[k-1];
-            }
-          }
-
-          // add to diagonal: (mu^2 - mu*N/T) * I
-          scl = mu*mu - scl;
-          for (int j=1; j < dim; j++) {
-            H[j*(dim+1)] += scl;
-          }
-
-          // pre and post multiply by diag(mu, friction), scale by Dm
-          for (int k=0; k < dim; k++) {
-            scl = Dm * (k == 0 ? mu : friction[k-1]);
-            for (int j=k; j < dim; j++) {
-              H[k*dim+j] *= scl * (j == 0 ? mu : friction[j-1]);
-            }
-          }
-
-          // make symmetric: copy upper into lower
-          for (int k=0; k < dim; k++) {
-            for (int j=k+1; j < dim; j++) {
-              H[j*dim+k] = H[k*dim+j];
-            }
-          }
-        }
       }
 
       // replicate state in all cone dimensions
@@ -3525,11 +3883,10 @@ void mj_constraintUpdate_impl(int ne, int nf, int nefc,
 
 
 // compute efc_state, efc_force, qfrc_constraint
-// optional: cost(qacc) = s_hat(jar) where jar = Jac*qacc-aref; cone Hessians
-void mj_constraintUpdate(const mjModel* m, mjData* d, const mjtNum* jar,
-                         mjtNum cost[1], int flg_coneHessian) {
+// optional: cost(qacc) = s_hat(jar) where jar = Jac*qacc-aref
+void mj_constraintUpdate(const mjModel* m, mjData* d, const mjtNum* jar, mjtNum cost[1]) {
   mj_constraintUpdate_impl(d->ne, d->nf, d->nefc, d->efc_D, d->efc_R, d->efc_frictionloss,
                            jar, d->efc_type, d->efc_id, d->contact, d->efc_state, d->efc_force,
-                           cost, flg_coneHessian);
+                           cost);
   mj_mulJacTVec(m, d, d->qfrc_constraint, d->efc_force);
 }

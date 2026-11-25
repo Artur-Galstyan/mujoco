@@ -934,13 +934,6 @@ class MuJoCoBindingsTest(parameterized.TestCase):
         self.data.contact.surfacevel, expected_surfacevel
     )
 
-    expected_H = []  # pylint: disable=invalid-name
-    for contact in self.data.contact:
-      expected_H.append(np.array(np.random.uniform(size=36), dtype=DTYPE))
-      contact.H = expected_H[-1]
-    self.assertLen(expected_H, expected_ncon)
-    np.testing.assert_array_equal(self.data.contact.H, expected_H)
-
     expected_geom = []
     for i, contact in enumerate(self.data.contact):
       expected_geom.append([i, i + 1])
@@ -1214,9 +1207,9 @@ class MuJoCoBindingsTest(parameterized.TestCase):
   def test_mj_struct_equality_array(self):
     contact1 = mujoco.MjContact()
     contact2 = mujoco.MjContact()
-    contact1.H[3] = 1
+    contact1.frame[3] = 1
     self.assertNotEqual(contact1, contact2)
-    contact2.H[3] = 1
+    contact2.frame[3] = 1
     self.assertEqual(contact1, contact2)
 
   @parameterized.named_parameters([
@@ -1800,6 +1793,12 @@ Euler integrator, semi-implicit in velocity.
     self.assertEqual(camera.fixedcamid, 2**31 - 1)
     with self.assertRaises(TypeError):
       camera.fixedcamid = 0.5
+
+  def test_mjv_option_offset(self):
+    option = mujoco.MjvOption()
+    np.testing.assert_array_equal(option.offset, [0, 0, 0])
+    option.offset = [1, 2, 3]
+    np.testing.assert_array_equal(copy.copy(option).offset, [1, 2, 3])
 
   def test_mjv_scene(self):
     scene = mujoco.MjvScene(model=self.model, maxgeom=100)
