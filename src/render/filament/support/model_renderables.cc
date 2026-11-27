@@ -15,6 +15,7 @@
 #include "render/filament/support/model_renderables.h"
 
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <memory>
 #include <optional>
@@ -111,7 +112,7 @@ static bool GetSize(const mjModel* model, mjtGeom type, const mjtNum* size,
     case mjGEOM_NONE:
     case mjGEOM_LABEL:
       return false;
-    case mjNGEOMTYPES:
+    default:
       mju_warning("Unsupported geom type: %d", type);
       return false;
   }
@@ -128,22 +129,25 @@ static void SetGeomMesh(mjrfRenderable* renderable, ModelResources* model_objs,
     case mjGEOM_MESH:
     case mjGEOM_SDF: {
       const int mesh_id = data_id * 2;
-      mjrf_setRenderableMesh(renderable, model_objs->GetMesh(mesh_id), 0, 0);
+      if (const mjrfMesh* mesh = model_objs->GetMesh(mesh_id)) {
+        mjrf_setRenderableMesh(renderable, mesh, 0, 0);
+      }
       break;
     }
     case mjGEOM_HFIELD: {
-      mjrf_setRenderableMesh(renderable, model_objs->GetHeightField(data_id), 0,
-                             0);
+      if (const mjrfMesh* mesh = model_objs->GetHeightField(data_id)) {
+        mjrf_setRenderableMesh(renderable, mesh, 0, 0);
+      }
       break;
     }
     case mjGEOM_FLEX:
-      mju_error("Flex meshes should be handled separately.");
+      mju_warning("Flex meshes should be handled separately.");
       break;
     case mjGEOM_SKIN:
-      mju_error("Skin meshes should be handled separately.");
+      mju_warning("Skin meshes should be handled separately.");
       break;
     case mjGEOM_DISC:
-      mju_error("Disc meshes should be handled separately.");
+      mju_warning("Disc meshes should be handled separately.");
       break;
     case mjGEOM_PLANE:
     case mjGEOM_SPHERE:
@@ -163,7 +167,7 @@ static void SetGeomMesh(mjrfRenderable* renderable, ModelResources* model_objs,
     case mjGEOM_LABEL:
       // Do nothing.
       break;
-    case mjNGEOMTYPES:
+    default:
       mju_warning("Unsupported geom type: %d", type);
       break;
   }
@@ -299,7 +303,7 @@ void ModelRenderables::Update(const mjData* data) {
         auto mesh = CreateFlexMesh(ctx, model, data, i);
         const auto& slices = flex_slices_[i];
         for (size_t k = 0; k < slices.size() && k < flexes_[i].size(); ++k) {
-          if (slices[k].elem_count > 0) {
+          if (mesh && slices[k].elem_count > 0) {
             mjrf_setRenderableMesh(flexes_[i][k].get(), mesh.get(),
                                    slices[k].elem_offset, slices[k].elem_count);
           }
@@ -387,7 +391,9 @@ void ModelRenderables::Update(const mjData* data) {
 
   for (int i = 0; i < model->nskin; ++i) {
     auto mesh = CreateSkinMesh(ctx, model, data, i);
-    mjrf_setRenderableMesh(skins_[i].get(), mesh.get(), 0, 0);
+    if (mesh) {
+      mjrf_setRenderableMesh(skins_[i].get(), mesh.get(), 0, 0);
+    }
     skin_meshes_[i] = std::move(mesh);
     // The mesh is built in simulation coordinates.
     mjrf_setRenderablePose(skins_[i].get(), offset.v, mat3f().asArray());
@@ -647,7 +653,7 @@ void ModelRenderables::AddSliderCrankGeoms() {
 void ModelRenderables::UpdateSliderCranks(const mjData* data, int actuator_id) {
   auto it = slider_cranks_.find(actuator_id);
   if (it == slider_cranks_.end()) {
-    mju_error("Slider/crank not found: %d", actuator_id);
+    mju_warning("Slider/crank not found: %d", actuator_id);
     return;
   }
 
@@ -1039,12 +1045,12 @@ mjrfMaterial ModelRenderables::GetMaterial(mjtObj obj_type, int obj_index,
         }
       }
     } else {
-      // For cube maps, if `tex_uniform` is true, then scale the texture so that
-      // it covers a 1x1 area of world space rather than the area of the object.
+      // For cube maps, if `tex_uniform` is true, scale the uvs so projection
+      // uses physical proportions rather than unit object coordinates.
       if (tex_uniform) {
-        material.uv_scale[0] = 1.0f / (fsize[0] ? fsize[0] : 1.0f);
-        material.uv_scale[1] = 1.0f / (fsize[1] ? fsize[1] : 1.0f);
-        material.uv_scale[2] = 1.0f / (fsize[2] ? fsize[2] : 1.0f);
+        material.uv_scale[0] = fsize[0] ? fsize[0] : 1.0f;
+        material.uv_scale[1] = fsize[1] ? fsize[1] : 1.0f;
+        material.uv_scale[2] = fsize[2] ? fsize[2] : 1.0f;
       }
     }
   }

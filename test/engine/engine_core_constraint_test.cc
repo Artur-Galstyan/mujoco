@@ -766,6 +766,184 @@ TEST_F(CoreConstraintTest, ConstraintUpdateEllipticBatchMatchesScalar) {
   }
 }
 
+// exact scalar reference matching the unbatched elliptic loop (using mju_norm)
+void ConstraintUpdateScalarRef(int ne, int nf, int nefc, const mjtNum* D,
+                               const mjtNum* R, const mjtNum* floss,
+                               const mjtNum* jar, const int* type,
+                               const int* id, const mjContact* contact,
+                               int* state, mjtNum* force, mjtNum* cost) {
+  mjtNum s = 0;
+  for (int i = 0; i < ne; i++) {
+    force[i] = -D[i] * jar[i];
+    if (cost) s += 0.5 * D[i] * jar[i] * jar[i];
+    state[i] = mjCNSTRSTATE_QUADRATIC;
+  }
+  for (int i = ne; i < ne + nf; i++) {
+    if (jar[i] <= -R[i] * floss[i]) {
+      if (cost) s += -0.5 * R[i] * floss[i] * floss[i] - floss[i] * jar[i];
+      force[i] = floss[i];
+      state[i] = mjCNSTRSTATE_LINEARNEG;
+    } else if (jar[i] >= R[i] * floss[i]) {
+      if (cost) s += -0.5 * R[i] * floss[i] * floss[i] + floss[i] * jar[i];
+      force[i] = -floss[i];
+      state[i] = mjCNSTRSTATE_LINEARPOS;
+    } else {
+      force[i] = -D[i] * jar[i];
+      if (cost) s += 0.5 * D[i] * jar[i] * jar[i];
+      state[i] = mjCNSTRSTATE_QUADRATIC;
+    }
+  }
+  for (int i = ne + nf; i < nefc; i++) {
+    if (type[i] != mjCNSTR_CONTACT_ELLIPTIC) {
+      if (jar[i] >= 0) {
+        force[i] = 0;
+        state[i] = mjCNSTRSTATE_SATISFIED;
+      } else {
+        force[i] = -D[i] * jar[i];
+        if (cost) s += 0.5 * D[i] * jar[i] * jar[i];
+        state[i] = mjCNSTRSTATE_QUADRATIC;
+      }
+    } else {
+      const mjContact* con = contact + id[i];
+      mjtNum mu = con->mu;
+      const mjtNum* friction = con->friction;
+      int dim = con->dim;
+      mjtNum U[6];
+      U[0] = jar[i] * mu;
+      for (int j = 1; j < dim; j++) U[j] = jar[i + j] * friction[j - 1];
+      mjtNum N = U[0];
+      mjtNum T = mju_norm(U + 1, dim - 1);
+      if (N >= mu * T || (T <= 0 && N >= 0)) {
+        for (int j = 0; j < dim; j++) force[i + j] = 0;
+        state[i] = mjCNSTRSTATE_SATISFIED;
+      } else if (mu * N + T <= 0 || (T <= 0 && N < 0)) {
+        for (int j = 0; j < dim; j++) force[i + j] = -D[i + j] * jar[i + j];
+        if (cost) {
+          for (int j = 0; j < dim; j++) {
+            s += (mjtNum)0.5 * D[i + j] * jar[i + j] * jar[i + j];
+          }
+        }
+        state[i] = mjCNSTRSTATE_QUADRATIC;
+      } else {
+        mjtNum Dm = D[i] / (mu * mu * (1 + mu * mu));
+        mjtNum NmT = N - mu * T;
+        if (cost) s += (mjtNum)0.5 * Dm * NmT * NmT;
+        mjtNum Uhat[5];
+        for (int j = 1; j < dim; j++) Uhat[j - 1] = U[j] / T;
+        force[i] = -Dm * NmT * mu;
+        for (int j = 1; j < dim; j++) {
+          force[i + j] = -force[i] * Uhat[j - 1] * friction[j - 1];
+        }
+        state[i] = mjCNSTRSTATE_CONE;
+      }
+      for (int j = 1; j < dim; j++) state[i + j] = state[i];
+      i += (dim - 1);
+    }
+  }
+  if (cost) *cost = s;
+}
+
+TEST_F(CoreConstraintTest, ConstraintUpdateEllipticSimdMatchesScalar) {
+  struct Block {
+    int dim;
+    int zone;
+    int count;
+  };
+  const std::vector<Block> blocks = {
+      {1, 3, 5}, {3, 0, 4}, {3, 1, 4}, {3, 2, 4}, {3, 3, 7},
+      {1, 3, 1}, {4, 0, 4}, {4, 1, 4}, {4, 2, 4}, {4, 3, 7},
+      {6, 0, 4}, {6, 1, 4}, {6, 2, 4}, {6, 3, 7},
+  };
+
+  // seed non-zero equality and friction rows so s != 0 entering every batch
+  constexpr int kNe = 2;
+  constexpr int kNf = 2;
+  std::vector<mjContact> con;
+  std::vector<int> type, id;
+  std::vector<mjtNum> D, R, floss, jar;
+  for (int i = 0; i < kNe; i++) {
+    type.push_back(mjCNSTR_EQUALITY);
+    id.push_back(i);
+    D.push_back(1.3 + 0.2 * i);
+    R.push_back(1.0 / D.back());
+    floss.push_back(0);
+    jar.push_back(0.7 - 1.1 * i);
+  }
+  for (int i = 0; i < kNf; i++) {
+    type.push_back(mjCNSTR_FRICTION_DOF);
+    id.push_back(i);
+    D.push_back(2.0 + 0.3 * i);
+    R.push_back(1.0 / D.back());
+    floss.push_back(0.4);
+    jar.push_back(i ? 0.1 : -0.9);
+  }
+
+  auto push_zone = [&](int dim, int zone, int k) {
+    int base = jar.size();
+    if (dim == 1) {
+      type.push_back(mjCNSTR_CONTACT_FRICTIONLESS);
+      id.push_back(0);
+      D.push_back(1.2 + 0.1 * k);
+      R.push_back(0);
+      floss.push_back(0);
+      jar.push_back((k % 2) ? 0.4 : -0.4);
+      return;
+    }
+    int cid = con.size();
+    mjContact c = {};
+    c.dim = dim;
+    c.mu = 0.55 + 0.03 * (cid % 7);
+    for (int j = 0; j < 5; j++) {
+      c.friction[j] = 0.9 + 0.15 * j + 0.02 * (cid % 5);
+    }
+    con.push_back(c);
+    int z = (zone == 3) ? (k % 3) : zone;
+    mjtNum jn = (z == 0) ? 1.2 : (z == 1 ? -1.5 : -0.1);
+    mjtNum jt = (z == 0) ? 0.05 : (z == 1 ? 0.02 : 0.9);
+    for (int j = 0; j < dim; j++) {
+      type.push_back(mjCNSTR_CONTACT_ELLIPTIC);
+      id.push_back(cid);
+      D.push_back(1.0 + 0.07 * (base + j));
+      R.push_back(0);
+      floss.push_back(0);
+      jar.push_back(j == 0 ? jn : jt * ((j % 2) ? 1.0 : -0.6));
+    }
+  };
+
+  for (const Block& b : blocks) {
+    for (int k = 0; k < b.count; k++) {
+      push_zone(b.dim, b.zone, k);
+    }
+  }
+
+  int nefc = jar.size();
+  std::vector<int> state(nefc, -1), state_ref(nefc, -1);
+  std::vector<mjtNum> force(nefc, -1), force_ref(nefc, -1);
+  mjtNum cost = 0, cost_ref = 0;
+  mj_constraintUpdate_impl(kNe, kNf, nefc, D.data(), R.data(), floss.data(),
+                           jar.data(), type.data(), id.data(), con.data(),
+                           state.data(), force.data(), &cost);
+  ConstraintUpdateScalarRef(kNe, kNf, nefc, D.data(), R.data(), floss.data(),
+                            jar.data(), type.data(), id.data(), con.data(),
+                            state_ref.data(), force_ref.data(), &cost_ref);
+
+  EXPECT_EQ(state, state_ref);
+  EXPECT_EQ(force, force_ref);
+  EXPECT_EQ(std::memcmp(force.data(), force_ref.data(), nefc * sizeof(mjtNum)),
+            0);
+  EXPECT_EQ(cost, cost_ref);
+  EXPECT_EQ(std::memcmp(&cost, &cost_ref, sizeof(mjtNum)), 0);
+
+  std::vector<int> state_nc(nefc, -1);
+  std::vector<mjtNum> force_nc(nefc, -1);
+  mj_constraintUpdate_impl(kNe, kNf, nefc, D.data(), R.data(), floss.data(),
+                           jar.data(), type.data(), id.data(), con.data(),
+                           state_nc.data(), force_nc.data(), nullptr);
+  EXPECT_EQ(state_nc, state);
+  EXPECT_EQ(std::memcmp(force_nc.data(), force.data(), nefc * sizeof(mjtNum)),
+            0);
+}
+
 // Test flex strain constraint with pinned nodes attached to freejoint parent
 TEST_F(CoreConstraintTest, BoxShellPinnedParentWithFreejoint) {
 #ifdef mjUSESINGLE
@@ -2499,6 +2677,440 @@ TEST_F(CoreConstraintTest, MakeImpedanceCacheAndEdgeCases) {
       .WillRepeatedly(::testing::Return());
   MjDataPtr d = MakeData(m);
   mj_forward(m.get(), d.get());
+}
+
+// Compute expected dense contact Jacobian rows independently via
+// mj_contactJacobian + mju_mulMatMat + friction cone construction.
+std::vector<mjtNum> ReferenceContactRows(const mjModel* m, mjData* d,
+                                         const mjContact* con, int ispyramid,
+                                         int* nrows_out) {
+  int nv = m->nv;
+  int dim = con->dim;
+  int issparse = mj_isSparse(m);
+
+  std::vector<mjtNum> jac(6 * nv, 0);
+  std::vector<mjtNum> jacdifp(3 * nv, 0);
+  std::vector<mjtNum> jacdifr(3 * nv, 0);
+  std::vector<mjtNum> jac1p(3 * nv, 0);
+  std::vector<mjtNum> jac2p(3 * nv, 0);
+  std::vector<mjtNum> jac1r(3 * nv, 0);
+  std::vector<mjtNum> jac2r(3 * nv, 0);
+  std::vector<int> chain(nv, 0);
+
+  int NV = mj_contactJacobian(m, d, con, dim, jacdifp.data(), jacdifr.data(),
+                              jac1p.data(), jac2p.data(), jac1r.data(),
+                              jac2r.data(), issparse ? chain.data() : nullptr);
+  if (NV == 0) {
+    *nrows_out = 0;
+    return {};
+  }
+
+  mju_mulMatMat(jac.data(), con->frame, jacdifp.data(), dim > 1 ? 3 : 1, 3, NV);
+  if (dim > 3) {
+    mju_mulMatMat(jac.data() + 3 * NV, con->frame, jacdifr.data(), dim - 3, 3,
+                  NV);
+  }
+
+  int nrows = dim == 1 ? 1 : (ispyramid ? 2 * (dim - 1) : dim);
+  *nrows_out = nrows;
+  std::vector<mjtNum> rows(nrows * NV, 0);
+  if (dim == 1 || !ispyramid) {
+    std::memcpy(rows.data(), jac.data(), nrows * NV * sizeof(mjtNum));
+  } else {
+    for (int k = 1; k < dim; ++k) {
+      mju_addScl(rows.data() + (2 * (k - 1)) * NV, jac.data(),
+                 jac.data() + k * NV, con->friction[k - 1], NV);
+      mju_addScl(rows.data() + (2 * (k - 1) + 1) * NV, jac.data(),
+                 jac.data() + k * NV, -con->friction[k - 1], NV);
+    }
+  }
+
+  // unpack sparse columns to dense [nrows x nv] for uniform comparison
+  std::vector<mjtNum> dense(nrows * nv, 0);
+  for (int r = 0; r < nrows; ++r) {
+    for (int k = 0; k < NV; ++k) {
+      int col = issparse ? chain[k] : k;
+      dense[r * nv + col] = rows[r * NV + k];
+    }
+  }
+  return dense;
+}
+
+// Verify instantiated contact metadata, sparse colind monotonicity, and
+// Jacobian rows match ReferenceContactRows (identical up to the sign of zero).
+void ExpectContactRowsMatchReference(const mjModel* m, const mjData* d,
+                                     int conid,
+                                     const std::vector<mjtNum>& ref_J,
+                                     int ref_nrows, int jac_mode, int condim,
+                                     int cone) {
+  const mjContact& con = d->contact[conid];
+  int nv = m->nv;
+  int issparse = mj_isSparse(m);
+  int ispyramid = mj_isPyramidal(m);
+  int expected_type = condim == 1 ? mjCNSTR_CONTACT_FRICTIONLESS
+                                  : (ispyramid ? mjCNSTR_CONTACT_PYRAMIDAL
+                                               : mjCNSTR_CONTACT_ELLIPTIC);
+
+  for (int r = 0; r < ref_nrows; ++r) {
+    int er = con.efc_address + r;
+    EXPECT_EQ(d->efc_type[er], expected_type);
+    EXPECT_EQ(d->efc_id[er], conid);
+    EXPECT_EQ(d->efc_frictionloss[er], 0);
+    mjtNum expected_pos =
+        (expected_type == mjCNSTR_CONTACT_ELLIPTIC && r > 0) ? 0 : con.dist;
+    mjtNum expected_margin =
+        (expected_type == mjCNSTR_CONTACT_ELLIPTIC && r > 0)
+            ? 0
+            : con.includemargin;
+    EXPECT_EQ(d->efc_pos[er], expected_pos);
+    EXPECT_EQ(d->efc_margin[er], expected_margin);
+
+    std::vector<mjtNum> actual_row(nv, 0);
+    if (issparse) {
+      int adr = d->efc_J_rowadr[er];
+      int nnz = d->efc_J_rownnz[er];
+      ASSERT_GT(nnz, 0);
+      for (int k = 0; k < nnz; ++k) {
+        int col = d->efc_J_colind[adr + k];
+        if (k > 0) {
+          EXPECT_GT(col, d->efc_J_colind[adr + k - 1]);
+        }
+        actual_row[col] = d->efc_J[adr + k];
+      }
+    } else {
+      std::memcpy(actual_row.data(), d->efc_J + er * nv, nv * sizeof(mjtNum));
+    }
+
+    // use EXPECT_EQ rather than memcmp because negFrame and the freejoint I_3
+    // copy can preserve -0.0 where mju_mulMatMat sums produce +0.0
+    for (int col = 0; col < nv; ++col) {
+      EXPECT_EQ(actual_row[col], ref_J[r * nv + col])
+          << "jac=" << jac_mode << " condim=" << condim << " cone=" << cone
+          << " con=" << conid << " r=" << r << " col=" << col;
+    }
+  }
+}
+
+TEST_F(CoreConstraintTest, ContactInstantiationMatchesReferenceExact) {
+  // covers: simple sliders (body_simple == 2), freejoints (body_simple == 1),
+  // simple ball (body_simple == 1), deep articulated chains (>= 6 DOFs),
+  // same-tree self-collision, cross-tree, welded child, and welded-pair
+  // zero-DOF exclusion (exclude == 3)
+  static constexpr char xml[] = R"(
+  <mujoco>
+    <worldbody>
+      <geom name="floor" type="plane" size="5 5 .1"/>
+      <body name="slider1" pos="-1 0 .09">
+        <joint type="slide" axis="1 0 0"/>
+        <joint type="slide" axis="0 1 0"/>
+        <joint type="slide" axis="0 0 1"/>
+        <geom type="sphere" size=".1" mass="1"/>
+      </body>
+      <body name="slider2" pos="-0.85 0 .09">
+        <joint type="slide" axis="1 0 0"/>
+        <joint type="slide" axis="0 1 0"/>
+        <joint type="slide" axis="0 0 1"/>
+        <geom type="sphere" size=".1" mass="1"/>
+      </body>
+      <body name="free1" pos="0 0 .09">
+        <freejoint/>
+        <geom type="sphere" size=".1" mass="1"/>
+      </body>
+      <body name="free2" pos=".15 0 .09">
+        <freejoint/>
+        <geom type="sphere" size=".1" mass="1"/>
+      </body>
+      <body name="simple_ball" pos="-.35 0 .09">
+        <joint type="ball"/>
+        <geom type="sphere" size=".1" mass="1"/>
+      </body>
+      <body name="chain_root" pos=".4 0 .15">
+        <freejoint/>
+        <geom type="sphere" size=".16" mass="1"/>
+        <body name="link1" pos=".05 0 0">
+          <inertial pos="0 0 0" mass=".2" diaginertia=".01 .01 .01"/>
+          <joint type="hinge" axis="0 1 0"/>
+          <body name="link2" pos=".05 0 0">
+            <inertial pos="0 0 0" mass=".2" diaginertia=".01 .01 .01"/>
+            <joint type="hinge" axis="1 0 0"/>
+            <body name="link3" pos=".05 0 0">
+              <inertial pos="0 0 0" mass=".2" diaginertia=".01 .01 .01"/>
+              <joint type="hinge" axis="0 0 1"/>
+              <body name="link4" pos=".05 0 0">
+                <joint type="hinge" axis="0 1 0"/>
+                <geom name="g_link4" type="sphere" size=".16" mass=".5"/>
+                <body name="welded_leaf" pos=".03 0 0">
+                  <geom name="g_leaf" type="sphere" size=".14" mass=".2"/>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+        <body name="branch2" pos=".18 0 0">
+          <joint type="hinge" axis="1 0 0"/>
+          <joint type="hinge" axis="0 1 0"/>
+          <geom type="sphere" size=".16" mass=".5"/>
+        </body>
+      </body>
+    </worldbody>
+    <contact>
+      <pair geom1="g_link4" geom2="g_leaf"/>
+    </contact>
+  </mujoco>
+  )";
+
+  std::array<char, 1024> error;
+  MjModelPtr m = LoadModelFromString(xml, error.data(), error.size());
+  ASSERT_THAT(m.get(), NotNull()) << error.data();
+
+  // verify every body class compiled with the expected body_simple level
+  int b_slider1 = mj_name2id(m.get(), mjOBJ_BODY, "slider1");
+  int b_free1 = mj_name2id(m.get(), mjOBJ_BODY, "free1");
+  int b_ball = mj_name2id(m.get(), mjOBJ_BODY, "simple_ball");
+  int b_leaf = mj_name2id(m.get(), mjOBJ_BODY, "welded_leaf");
+  EXPECT_EQ(m->body_simple[b_slider1], 2);
+  EXPECT_EQ(m->body_simple[b_free1], 1);
+  EXPECT_EQ(m->body_simple[b_ball], 1);
+  EXPECT_EQ(m->body_simple[b_leaf], 0);
+
+  std::vector<mjtNum> vel(m->nv);
+  for (int v = 0; v < m->nv; ++v) {
+    vel[v] = 0.2 * ((v % 5) - 2);
+  }
+
+  for (int jac_mode : {mjJAC_SPARSE, mjJAC_DENSE}) {
+    m->opt.jacobian = jac_mode;
+    for (int condim : {1, 3, 4, 6}) {
+      for (int g = 0; g < m->ngeom; ++g) {
+        m->geom_condim[g] = condim;
+      }
+      for (int cone : {mjCONE_PYRAMIDAL, mjCONE_ELLIPTIC}) {
+        m->opt.cone = cone;
+        MjDataPtr d = MakeData(m);
+        mj_integratePos(m.get(), d->qpos, vel.data(), 0.05);
+        mj_forward(m.get(), d.get());
+        ASSERT_GE(d->ncon, 8)
+            << "jac=" << jac_mode << " condim=" << condim << " cone=" << cone;
+
+        int ispyramid = mj_isPyramidal(m.get());
+        int checked_contacts = 0;
+        int excluded_nodof = 0;
+        for (int c = 0; c < d->ncon; ++c) {
+          const mjContact& con = d->contact[c];
+          if (con.exclude && con.exclude != 3) {
+            continue;
+          }
+          int ref_nrows = 0;
+          std::vector<mjtNum> ref_J = ReferenceContactRows(
+              m.get(), d.get(), &con, ispyramid, &ref_nrows);
+          if (ref_nrows == 0) {
+            EXPECT_EQ(con.efc_address, -1);
+            EXPECT_EQ(con.exclude, 3);
+            excluded_nodof++;
+            continue;
+          }
+          ASSERT_GE(con.efc_address, 0);
+          checked_contacts++;
+          ExpectContactRowsMatchReference(m.get(), d.get(), c, ref_J, ref_nrows,
+                                          jac_mode, condim, cone);
+        }
+        EXPECT_GE(checked_contacts, 7);
+        EXPECT_GE(excluded_nodof, 1);
+      }
+    }
+  }
+}
+
+TEST_F(CoreConstraintTest, FlexContactMatchesReferenceExact) {
+  // exercises instantiateContactGeneral, lazy mjContactScratch reuse, and
+  // rotateJac3 for dim 1, 3, 4, 6
+  static constexpr char xml[] = R"(
+  <mujoco>
+    <worldbody>
+      <geom name="floor" type="plane" size="5 5 .1"/>
+      <flexcomp name="box" type="grid" count="2 2 2" spacing=".2 .2 .2"
+        pos="0 0 .15" dim="3" mass="1">
+        <contact condim="3"/>
+      </flexcomp>
+      <body name="probe1" pos="-.05 0 .28">
+        <freejoint/>
+        <geom type="sphere" size=".05" mass="1"/>
+      </body>
+      <body name="probe2" pos=".05 0 .28">
+        <freejoint/>
+        <geom type="sphere" size=".05" mass="1"/>
+      </body>
+    </worldbody>
+  </mujoco>
+  )";
+  std::array<char, 1024> error;
+  MjModelPtr m = LoadModelFromString(xml, error.data(), error.size());
+  ASSERT_THAT(m.get(), NotNull()) << error.data();
+
+  for (int jac_mode : {mjJAC_SPARSE, mjJAC_DENSE}) {
+    m->opt.jacobian = jac_mode;
+    for (int condim : {1, 3, 4, 6}) {
+      m->flex_condim[0] = condim;
+      for (int g = 0; g < m->ngeom; ++g) {
+        m->geom_condim[g] = condim;
+      }
+      for (int cone : {mjCONE_PYRAMIDAL, mjCONE_ELLIPTIC}) {
+        m->opt.cone = cone;
+        MjDataPtr d = MakeData(m);
+        mj_forward(m.get(), d.get());
+        ASSERT_GT(d->ncon, 0);
+
+        int ispyramid = mj_isPyramidal(m.get());
+        int elem_contacts = 0;
+        for (int c = 0; c < d->ncon; ++c) {
+          const mjContact& con = d->contact[c];
+          if (con.exclude) {
+            continue;
+          }
+          if (con.elem[0] >= 0 || con.elem[1] >= 0) {
+            elem_contacts++;
+          }
+          int ref_nrows = 0;
+          std::vector<mjtNum> ref_J = ReferenceContactRows(
+              m.get(), d.get(), &con, ispyramid, &ref_nrows);
+          ASSERT_GT(ref_nrows, 0);
+          ExpectContactRowsMatchReference(m.get(), d.get(), c, ref_J, ref_nrows,
+                                          jac_mode, condim, cone);
+        }
+        EXPECT_GE(elem_contacts, 2);
+      }
+    }
+  }
+}
+
+TEST_F(CoreConstraintTest, RegularizeConstraintMetricDenseMatchesSparseExact) {
+  // nv = 10 exercises 4-wide chunks, scalar remainder, all-zero chunks,
+  // undamped DOFs (freejoint, dms == dm) and damped/stiff DOFs (dms != dm).
+  static constexpr char xml[] = R"(
+  <mujoco>
+    <option timestep="0.01" integrator="discrete"/>
+    <worldbody>
+      <geom type="plane" size="5 5 .1"/>
+      <body pos="0 0 .14">
+        <freejoint/>
+        <geom type="sphere" size=".15" mass="1"/>
+        <body pos=".1 0 .02">
+          <joint type="hinge" axis="0 1 0" damping="2" stiffness="50"
+            limited="true" range="-0.1 0.1"/>
+          <geom type="sphere" size=".12" mass=".5"/>
+          <body pos=".1 0 0">
+            <joint type="hinge" axis="1 0 0" damping="1" stiffness="20"/>
+            <joint type="hinge" axis="0 0 1"/>
+            <geom type="sphere" size=".1" mass=".3"/>
+          </body>
+        </body>
+      </body>
+      <body pos="1.5 0 .095">
+        <joint type="slide" axis="0 0 1" damping="3"/>
+        <geom type="sphere" size=".1" mass="1"/>
+      </body>
+    </worldbody>
+  </mujoco>
+  )";
+  std::array<char, 1024> error;
+  MjModelPtr m = LoadModelFromString(xml, error.data(), error.size());
+  ASSERT_THAT(m.get(), NotNull()) << error.data();
+  ASSERT_EQ(m->nv, 10);
+
+  // pass 0: damped/stiff DOFs (nonzero efm_sdiag); pass 1: all-zero efm_sdiag
+  std::vector<mjtNum> diagA_damp;
+  std::vector<mjtNum> expected_ratio;
+  for (int zero_sdiag : {0, 1}) {
+    if (zero_sdiag) {
+      mju_zero(m->dof_damping, m->nv);
+      mju_zero(m->jnt_stiffness, m->njnt);
+      // polynomial damping keeps efm_sdiag allocated with zero entries at rest
+      m->dof_dampingpoly[0] = 1;
+    }
+
+    m->opt.jacobian = mjJAC_DENSE;
+    MjDataPtr d_dense = MakeData(m);
+    mj_forward(m.get(), d_dense.get());
+
+    m->opt.jacobian = mjJAC_SPARSE;
+    MjDataPtr d_sparse = MakeData(m);
+    mj_forward(m.get(), d_sparse.get());
+
+    ASSERT_GT(d_dense->nefc, 0);
+    ASSERT_EQ(d_dense->nefc, d_sparse->nefc);
+    int nefc = d_dense->nefc;
+    EXPECT_EQ(std::memcmp(d_dense->efc_diagA, d_sparse->efc_diagA,
+                          nefc * sizeof(mjtNum)),
+              0)
+        << "zero_sdiag=" << zero_sdiag;
+    EXPECT_EQ(
+        std::memcmp(d_dense->efc_R, d_sparse->efc_R, nefc * sizeof(mjtNum)), 0)
+        << "zero_sdiag=" << zero_sdiag;
+    EXPECT_EQ(
+        std::memcmp(d_dense->efc_D, d_sparse->efc_D, nefc * sizeof(mjtNum)), 0)
+        << "zero_sdiag=" << zero_sdiag;
+    EXPECT_EQ(std::memcmp(d_dense->efc_KBIP, d_sparse->efc_KBIP,
+                          4 * nefc * sizeof(mjtNum)),
+              0)
+        << "zero_sdiag=" << zero_sdiag;
+
+    // damped pass: confirm mixed zero/nonzero efm_sdiag and compute reference
+    if (!zero_sdiag) {
+      ASSERT_THAT(d_dense->efm_sdiag, NotNull());
+      int n_nonzero = 0;
+      for (int c = 0; c < m->nv; ++c) {
+        n_nonzero += (d_dense->efm_sdiag[c] != 0);
+      }
+      EXPECT_GT(n_nonzero, 0);
+      EXPECT_LT(n_nonzero, m->nv);
+
+      diagA_damp.assign(d_dense->efc_diagA, d_dense->efc_diagA + nefc);
+      expected_ratio.resize(nefc);
+      for (int r = 0; r < nefc; ++r) {
+        mjtNum num = 0, den = 0;
+        for (int c = 0; c < m->nv; ++c) {
+          mjtNum J = d_dense->efc_J[r * m->nv + c];
+          if (!J) continue;
+          mjtNum Mdiag = d_dense->M[m->M_rowadr[c] + m->M_rownnz[c] - 1];
+          num += J * J / mju_max(mjMINVAL, Mdiag + d_dense->efm_sdiag[c]);
+          den += J * J / mju_max(mjMINVAL, Mdiag);
+        }
+        expected_ratio[r] = (den > mjMINVAL) ? num / den : 1;
+      }
+    } else {
+      // all-zero pass: confirm efm_sdiag is allocated and all zero
+      ASSERT_THAT(d_dense->efm_sdiag, NotNull());
+      EXPECT_TRUE(mju_isZero(d_dense->efm_sdiag, m->nv));
+      ASSERT_EQ(static_cast<int>(diagA_damp.size()), nefc);
+      for (int r = 0; r < nefc; ++r) {
+        // for multi-row contacts, mj_makeImpedance derives all rows from row 0
+        if (r > 0 && d_dense->efc_type[r] == d_dense->efc_type[r - 1] &&
+            d_dense->efc_id[r] == d_dense->efc_id[r - 1]) {
+          continue;
+        }
+        // mj_makeImpedance rescales efc_diagA via R * imp / (1-imp)
+        EXPECT_NEAR(diagA_damp[r], d_dense->efc_diagA[r] * expected_ratio[r],
+                    MjTol(3e-15, 2e-6) * diagA_damp[r])
+            << "row " << r;
+      }
+    }
+  }
+
+  // also verify elliptic contacts dense == sparse
+  m = LoadModelFromString(xml, error.data(), error.size());
+  ASSERT_THAT(m.get(), NotNull()) << error.data();
+  m->opt.cone = mjCONE_ELLIPTIC;
+  m->opt.jacobian = mjJAC_DENSE;
+  MjDataPtr d_ell_dense = MakeData(m);
+  mj_forward(m.get(), d_ell_dense.get());
+  m->opt.jacobian = mjJAC_SPARSE;
+  MjDataPtr d_ell_sparse = MakeData(m);
+  mj_forward(m.get(), d_ell_sparse.get());
+  ASSERT_GT(d_ell_dense->nefc, 0);
+  ASSERT_EQ(d_ell_dense->nefc, d_ell_sparse->nefc);
+  EXPECT_EQ(std::memcmp(d_ell_dense->efc_diagA, d_ell_sparse->efc_diagA,
+                        d_ell_dense->nefc * sizeof(mjtNum)),
+            0);
 }
 
 }  // namespace

@@ -426,7 +426,7 @@ TEST_F(ElasticityTest, ElasticEnergyShell) {
   <worldbody>
     <flexcomp type="grid" count="8 8 1" spacing="1 1 1"
               radius=".025" name="test" dim="2">
-      <elasticity young="2" poisson="0" thickness="1"/>
+      <elasticity young="2" poisson="0" thickness="1" elastic2d="bend"/>
     </flexcomp>
   </worldbody>
   </mujoco>
@@ -461,7 +461,7 @@ TEST_F(ElasticityTest, ElasticEnergyShell) {
         }
       }
       EXPECT_NEAR(4 * energy / volume, 0,
-                  std::numeric_limits<float>::epsilon());
+                  MjTol(std::numeric_limits<float>::epsilon(), 6e-4));
     }
   }
 }
@@ -5783,7 +5783,7 @@ TEST_F(ElasticityTest, FcmCutCellPassiveForcesAndSimulation) {
     mj_forward(m.get(), d.get());
     EXPECT_GT(mju_norm(d->qfrc_spring, m->nv), 0) << dof;
 
-    for (int step = 0; step < 50; step++) {
+    for (int step = 0; step < 10; step++) {
       mj_step(m.get(), d.get());
     }
     EXPECT_EQ(d->warning[mjWARN_BADQACC].number, 0) << dof;

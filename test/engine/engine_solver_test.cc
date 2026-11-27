@@ -23,6 +23,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include <mujoco/mujoco.h>
+#include "src/engine/engine_metric.h"
 #include "test/fixture.h"
 
 namespace mujoco {
@@ -1693,6 +1694,559 @@ TEST_F(SolverTest, DenseEllipticConeFold) {
                   MjTol(1e-10, 1e-4))
           << "condim " << condim << " dof " << i;
     }
+  }
+}
+
+// float32 cannot resolve the cost at the default tolerance
+#ifndef mjUSESINGLE
+
+// stiff discrete CG models at rest in contact with a plane
+static const char* const kDiscreteRod = R"(
+<mujoco>
+  <option integrator="discrete" solver="CG" timestep="0.002"/>
+  <worldbody>
+    <geom type="plane" size="1 1 .1"/>
+    <flexcomp name="rod" type="grid" dim="1" count="8 1 1"
+              spacing="0.05 0.05 0.05" pos="0 0 0.011" radius="0.01" mass="0.1">
+      <contact selfcollide="none"/>
+      <elasticity young="1e7" damping="0.01"/>
+    </flexcomp>
+  </worldbody>
+</mujoco>
+)";
+
+static const char* const kDiscreteCloth = R"(
+<mujoco>
+  <option integrator="discrete" solver="CG" timestep="0.002"/>
+  <worldbody>
+    <geom type="plane" size="1 1 .1"/>
+    <flexcomp name="cloth" type="grid" dim="2" count="6 6 1"
+              spacing="0.05 0.05 0.05" pos="0 0 0.006" radius="0.005"
+              mass="0.2">
+      <contact selfcollide="none"/>
+      <elasticity young="1e6" poisson="0.3" damping="0.01" thickness="0.005"
+                  elastic2d="both"/>
+    </flexcomp>
+  </worldbody>
+</mujoco>
+)";
+
+static const char* const kDiscreteTrilinear = R"(
+<mujoco>
+  <option integrator="discrete" solver="CG" timestep="0.002"/>
+  <worldbody>
+    <geom type="plane" size="1 1 .1"/>
+    <flexcomp name="soft" type="grid" dim="3" count="3 3 3"
+              spacing="0.05 0.05 0.05" pos="0 0 0.061" radius="0.01" mass="0.5"
+              dof="trilinear">
+      <contact selfcollide="none"/>
+      <elasticity young="1e6" poisson="0.3" damping="0.01"/>
+    </flexcomp>
+  </worldbody>
+</mujoco>
+)";
+
+// a tendon spring pulls a box onto the plane, a position actuator presses a
+// sphere onto it (ctrl < 0)
+static const char* const kDiscreteTendonActuator = R"(
+<mujoco>
+  <option integrator="discrete" solver="CG" timestep="0.002"/>
+  <default>
+    <geom solref="0.004 1"/>
+  </default>
+  <worldbody>
+    <geom type="plane" size="1 1 .1"/>
+    <site name="anchor" pos="0 0 -0.25"/>
+    <body pos="0 0 0.05">
+      <freejoint/>
+      <geom type="box" size="0.05 0.05 0.05" mass="0.05"/>
+      <site name="box"/>
+    </body>
+    <body pos="0.3 0 0.05">
+      <joint name="press" type="slide" axis="0 0 1"/>
+      <geom type="sphere" size="0.05" mass="0.02"/>
+    </body>
+  </worldbody>
+  <tendon>
+    <spatial stiffness="1e5" damping="1" springlength="0.2999">
+      <site site="anchor"/>
+      <site site="box"/>
+    </spatial>
+  </tendon>
+  <actuator>
+    <position joint="press" kp="1e5" kv="10"/>
+  </actuator>
+</mujoco>
+)";
+
+static const mjtNum kPressCtrl = -1e-4;
+
+// iterations of the last constraint solve, over all islands
+static int SolverIterations(const mjData* d) {
+  int niter = 0;
+  for (int i = 0; i < mjNISLAND; i++) {
+    niter += d->solver_niter[i];
+  }
+  return niter;
+}
+
+// trace of the inertia, the inverse of the solver's cost scale
+static mjtNum InertiaTrace(const mjModel* m, const mjData* d) {
+  mjtNum trace = 0;
+  for (int i = 0; i < m->nv; i++) {
+    trace += d->M[m->M_rowadr[i] + m->M_rownnz[i] - 1];
+  }
+  return trace;
+}
+
+// cost(qacc1) - cost(qacc2) of the primal problem at the state of d, with
+//   cost(a) = 0.5*a'*Mtilde*a - a'*qfrc_eff + s(J*a - aref)
+// overwrites the constraint state of d
+static mjtNum PrimalCostDiff(const mjModel* m, mjData* d, const mjtNum* qacc1,
+                             const mjtNum* qacc2) {
+  int nv = m->nv, nefc = d->nefc;
+  std::vector<mjtNum> dif(nv), mid(nv), res(nv), jar(nefc);
+
+  // Gauss: (a1 - a2)' * (Mtilde*(a1 + a2)/2 - qfrc_eff), free of cancellation
+  for (int i = 0; i < nv; i++) {
+    dif[i] = qacc1[i] - qacc2[i];
+    mid[i] = 0.5 * (qacc1[i] + qacc2[i]);
+  }
+  mj_mulM(m, d, res.data(), mid.data());
+  mju_subFrom(res.data(), d->qfrc_smooth, nv);
+  if (d->efm_active) {
+    mj_effMulAdd(m, d, res.data(), mid.data(), /*flg_contact=*/1);
+    mju_subFrom(res.data(), d->efm_c, nv);
+    if (d->efm_ca) {
+      mju_subFrom(res.data(), d->efm_ca, nv);
+    }
+  }
+  mjtNum diff = mju_dot(dif.data(), res.data(), nv);
+
+  // constraint: s(J*a1 - aref) - s(J*a2 - aref)
+  mjtNum cost[2];
+  const mjtNum* qacc[2] = {qacc1, qacc2};
+  for (int k = 0; k < 2; k++) {
+    mj_mulJacVec(m, d, jar.data(), qacc[k]);
+    mju_subFrom(jar.data(), d->efc_aref, nefc);
+    mj_constraintUpdate(m, d, jar.data(), &cost[k]);
+  }
+  return diff + cost[0] - cost[1];
+}
+
+// minimizer of the primal cost at the state of d: the constraint stage from the
+// same qacc_smooth, metric and warmstart, with early termination disabled.
+// (mj_forward would also converge qacc_smooth to opt.tolerance = 0)
+static std::vector<mjtNum> ConvergedQacc(mjModel* m, const mjData* d,
+                                         mjData* scratch) {
+  mjtNum tolerance = m->opt.tolerance;
+  int iterations = m->opt.iterations;
+  m->opt.tolerance = 0;
+  m->opt.iterations = 2000;
+  mj_copyData(scratch, m, d);
+  mj_fwdConstraint(m, scratch);
+  m->opt.tolerance = tolerance;
+  m->opt.iterations = iterations;
+  return std::vector<mjtNum>(scratch->qacc, scratch->qacc + m->nv);
+}
+
+// under integrator="discrete", zero-iteration exits of CG are within tolerance
+// of the converged cost: cost(qacc) - cost* <= tolerance/scale
+TEST_F(SolverTest, DiscreteZeroIterationsWithinTolerance) {
+  struct Case {
+    const char* name;
+    const char* xml;
+    bool fires;  // returns in zero iterations at rest
+  };
+  const Case cases[] = {{"rod", kDiscreteRod, true},
+                        {"cloth", kDiscreteCloth, true},
+                        {"trilinear", kDiscreteTrilinear, true},
+                        {"tendon_actuator", kDiscreteTendonActuator, false}};
+  const int kSettle = 250, kCheckSteps = 10;
+
+  for (const Case& tc : cases) {
+    for (bool island : {false, true}) {
+      SCOPED_TRACE(std::string(tc.name) + (island ? "/island" : "/monolithic"));
+      char error[1024];
+      MjModelPtr model = LoadModelFromString(tc.xml, error, sizeof(error));
+      ASSERT_THAT(model, NotNull()) << error;
+      if (!island) {
+        model->opt.disableflags |= mjDSBL_ISLAND;
+      }
+
+      mjtNum tolerance = model->opt.tolerance;
+      MjDataPtr data = MakeData(model);
+      MjDataPtr scratch = MakeData(model);
+      mju_fill(data->ctrl, kPressCtrl, model->nu);
+
+      for (int step = 0; step < kSettle; step++) {
+        mj_step(model.get(), data.get());
+      }
+
+      int nzero = 0;
+      for (int step = 0; step < kCheckSteps; step++) {
+        mj_forward(model.get(), data.get());
+        if (data->nefc && SolverIterations(data.get()) == 0) {
+          nzero++;
+          std::vector<mjtNum> qacc =
+              ConvergedQacc(model.get(), data.get(), scratch.get());
+          mj_copyData(scratch.get(), model.get(), data.get());
+          mjtNum diff = PrimalCostDiff(model.get(), scratch.get(), data->qacc,
+                                       qacc.data());
+          mjtNum bound = tolerance * InertiaTrace(model.get(), data.get());
+          EXPECT_LE(diff, bound * (1 + 1e-6)) << "step " << (kSettle + step);
+        }
+        mj_step(model.get(), data.get());
+      }
+
+      // the certificate fires at rest
+      if (tc.fires) {
+        EXPECT_GT(nzero, 0);
+      }
+    }
+  }
+}
+
+#endif  // !mjUSESINGLE
+
+// PGS with warmstart disabled (uninitialized efc_state on entry) must be
+// MSAN-clean and write valid states across cones, jacobians, islands >
+// mjNISLAND, iterations > mjNSOLVER, and NoSlip.
+TEST_F(SolverTest, PGSWarmstartDisabled) {
+  std::string xml = R"(
+  <mujoco>
+    <option solver="PGS" iterations="210" tolerance="0" noslip_iterations="2">
+      <flag warmstart="disable"/>
+    </option>
+    <worldbody>
+      <geom type="plane" size="20 20 0.1" condim="1"
+        friction="0.1 0.001 0.0001"/>
+      <body pos="0 0 0.095">
+        <freejoint/>
+        <geom type="box" size="0.1 0.1 0.1" condim="3"
+          friction="1 0.005 0.0001"/>
+      </body>
+      <body pos="0.5 0 0.095">
+        <freejoint/>
+        <geom type="box" size="0.1 0.1 0.1" condim="4"
+          friction="0.7 0.02 0.002"/>
+      </body>
+      <body pos="1.0 0 0.095">
+        <freejoint/>
+        <geom type="box" size="0.1 0.1 0.1" condim="6"
+          friction="0.6 0.03 0.003"/>
+      </body>
+      <body pos="1.5 0 0.5">
+        <joint name="j_eq" type="slide" axis="1 0 0" frictionloss="0.5"
+          limited="true" range="-0.1 0.1"/>
+        <geom type="sphere" size="0.05" contype="0" conaffinity="0"/>
+      </body>)";
+
+  // add extra islands beyond mjNISLAND to cover unrecorded-stats post-loop path
+  // and both unit and non-unit friction on dim == 3 contacts
+  for (int i = 0; i < mjNISLAND; ++i) {
+    xml += "\n      <body pos=\"" + std::to_string(2.5 + 0.5 * i) +
+           " 0 0.095\">\n"
+           "        <freejoint/>\n"
+           "        <geom type=\"sphere\" size=\"0.1\" condim=\"3\" "
+           "friction=\"" +
+           std::string(i % 2 == 0 ? "0.7 0.005 0.0001" : "1 0.005 0.0001") +
+           "\"/>\n"
+           "      </body>";
+  }
+
+  xml += R"(
+    </worldbody>
+    <equality>
+      <joint joint1="j_eq" polycoef="0.05 0 0 0 0"/>
+    </equality>
+  </mujoco>
+  )";
+
+  char error[1024];
+  MjModelPtr model = LoadModelFromString(xml.c_str(), error, sizeof(error));
+  ASSERT_THAT(model.get(), NotNull()) << error;
+
+  for (mjtCone cone : {mjCONE_PYRAMIDAL, mjCONE_ELLIPTIC}) {
+    for (mjtJacobian jac : {mjJAC_DENSE, mjJAC_SPARSE}) {
+      model->opt.cone = cone;
+      model->opt.jacobian = jac;
+      MjDataPtr data = MakeData(model);
+      data->qvel[0] = 1.5;
+      data->qvel[6] = -1.2;
+      data->qvel[12] = 0.8;
+      mj_step(model.get(), data.get());
+
+      ASSERT_GT(data->nisland, mjNISLAND);
+      ASSERT_GT(data->nefc, 0);
+      int n_dim3 = 0, n_dim4 = 0, n_dim6 = 0;
+      for (int c = 0; c < data->ncon; ++c) {
+        int dim = data->contact[c].dim;
+        n_dim3 += (dim == 3);
+        n_dim4 += (dim == 4);
+        n_dim6 += (dim == 6);
+      }
+      EXPECT_GT(n_dim3, 0) << "cone=" << cone << " jac=" << jac;
+      EXPECT_GT(n_dim4, 0) << "cone=" << cone << " jac=" << jac;
+      EXPECT_GT(n_dim6, 0) << "cone=" << cone << " jac=" << jac;
+      for (int i = 0; i < data->nefc; ++i) {
+        EXPECT_GE(data->efc_state[i], mjCNSTRSTATE_SATISFIED)
+            << "cone=" << cone << " jac=" << jac << " i=" << i;
+        EXPECT_LE(data->efc_state[i], mjCNSTRSTATE_CONE)
+            << "cone=" << cone << " jac=" << jac << " i=" << i;
+      }
+      for (int isl = 0; isl < mjNISLAND; ++isl) {
+        int niter = mjMIN(data->solver_niter[isl], mjNSOLVER);
+        for (int it = 0; it < niter; ++it) {
+          const mjSolverStat& st = data->solver[isl * mjNSOLVER + it];
+          EXPECT_GE(st.nactive, 0);
+          EXPECT_GE(st.nchange, 0);
+        }
+      }
+    }
+  }
+}
+
+// Verify 4-wide batched PrimalEvalFriction across all 3 Huber zones, zone
+// crossings, and scalar remainder (nf = 11) under Newton and CG.
+TEST_F(SolverTest, PrimalFrictionLossBatchAndZones) {
+  std::string xml = R"(
+  <mujoco>
+    <option timestep="0.01" iterations="100" tolerance="1e-12"/>
+    <worldbody>)";
+  for (int i = 0; i < 11; ++i) {
+    xml +=
+        "\n      <body pos=\"" + std::to_string(0.5 * i) +
+        " 0 1\">\n"
+        "        <joint type=\"slide\" axis=\"1 0 0\" frictionloss=\"" +
+        std::to_string(0.5 + 0.2 * (i % 4)) +
+        "\"/>\n"
+        "        <geom type=\"sphere\" size=\"0.05\" mass=\"1\" contype=\"0\""
+        " conaffinity=\"0\"/>\n"
+        "      </body>";
+  }
+  xml += R"(
+    </worldbody>
+  </mujoco>
+  )";
+
+  char error[1024];
+  MjModelPtr model = LoadModelFromString(xml.c_str(), error, sizeof(error));
+  ASSERT_THAT(model, NotNull()) << error;
+  model->opt.enableflags |= mjENBL_FWDINV;
+  model->opt.tolerance = MjTol(1e-12, 1e-6);
+
+  // drives quadratic (near zero), linear negative, linear positive, and
+  // crossings during linesearch
+  const double qfrc[11] = {-5.0, 0.05, 6.0, -0.02, -4.0, 5.5,
+                           0.01, -6.5, 4.5, -0.03, 7.0};
+  const double qvel[11] = {0.2, -0.01, -0.3, 0.01, 0.4, -0.2,
+                           0.0, 0.3,   -0.4, 0.02, -0.5};
+
+  for (mjtSolver solver : {mjSOL_NEWTON, mjSOL_CG}) {
+    for (mjtJacobian jac : {mjJAC_DENSE, mjJAC_SPARSE}) {
+      model->opt.solver = solver;
+      model->opt.jacobian = jac;
+      MjDataPtr data = MakeData(model);
+      mju_d2n(data->qfrc_applied, qfrc, 11);
+      mju_d2n(data->qvel, qvel, 11);
+      mj_forward(model.get(), data.get());
+      mj_compareFwdInv(model.get(), data.get());
+
+      ASSERT_EQ(data->nf, 11);
+      EXPECT_EQ(data->warning[mjWARN_BADQACC].number, 0);
+      int n_quad = 0, n_neg = 0, n_pos = 0;
+      for (int i = 0; i < data->nf; ++i) {
+        n_quad += (data->efc_state[i] == mjCNSTRSTATE_QUADRATIC);
+        n_neg += (data->efc_state[i] == mjCNSTRSTATE_LINEARNEG);
+        n_pos += (data->efc_state[i] == mjCNSTRSTATE_LINEARPOS);
+      }
+      EXPECT_GT(n_quad, 0);
+      EXPECT_GT(n_neg, 0);
+      EXPECT_GT(n_pos, 0);
+
+      // verify against mj_inverse (solver_fwdinv[0])
+      mjtNum fwdinv = data->solver_fwdinv[0];
+      EXPECT_LT(fwdinv, MjTol(1e-12, 2e-6))
+          << "solver=" << solver << " jac=" << jac;
+    }
+  }
+}
+
+// Verify multi-span dim=3 and 4-wide dim=4/6 elliptic PrimalPrepare/PrimalEval
+// across all 3 cone zones and scalar remainders under Newton and CG.
+TEST_F(SolverTest, PrimalEllipticMultiSpanAndCondim46) {
+  std::string xml = R"(
+  <mujoco>
+    <option cone="elliptic" timestep="0.01" iterations="100" tolerance="1e-12"/>
+    <worldbody>
+      <geom type="plane" size="20 20 0.1" condim="1" friction="0.6 0.02 0.002"/>)";
+  // interleaved condim runs: 5x dim=3, 5x dim=4, 5x dim=6, 5x dim=3
+  const int condims[] = {3, 3, 3, 3, 3, 4, 4, 4, 4, 4,
+                         6, 6, 6, 6, 6, 3, 3, 3, 3, 3};
+  for (int i = 0; i < 20; ++i) {
+    xml += "\n      <body pos=\"" + std::to_string(0.5 * i) +
+           " 0 0.095\">\n"
+           "        <freejoint/>\n"
+           "        <geom type=\"sphere\" size=\"0.1\" mass=\"1\" condim=\"" +
+           std::to_string(condims[i]) +
+           "\" friction=\"0.6 0.02 0.002\"/>\n"
+           "      </body>";
+  }
+  xml += R"(
+    </worldbody>
+  </mujoco>
+  )";
+
+  char error[1024];
+  MjModelPtr model = LoadModelFromString(xml.c_str(), error, sizeof(error));
+  ASSERT_THAT(model, NotNull()) << error;
+  model->opt.enableflags |= mjENBL_FWDINV;
+  model->opt.tolerance = MjTol(1e-11, 1e-5);
+  // keep all 20 contacts in one solver pass so 4-wide batching triggers
+  model->opt.disableflags |= mjDSBL_ISLAND;
+
+  auto setup_state = [](const MjModelPtr& m, MjDataPtr& d) {
+    for (int i = 0; i < 20; ++i) {
+      // mix sliding, sticking, spinning, and separating contacts
+      d->qvel[6 * i + 0] = (i % 3 == 0) ? 2.5 : (i % 3 == 1 ? 0.02 : -1.8);
+      d->qvel[6 * i + 1] = (i % 2 == 0) ? -1.0 : 0.05;
+      d->qvel[6 * i + 2] = (i % 5 == 4) ? 1.5 : -0.2;
+      d->qvel[6 * i + 3] = 0.8 * ((i % 3) - 1);
+      d->qvel[6 * i + 4] = -0.6 * ((i % 2) ? 1 : -1);
+      d->qvel[6 * i + 5] = 1.2 * ((i % 2) ? -1 : 1);
+    }
+    mj_forward(m.get(), d.get());
+    mj_compareFwdInv(m.get(), d.get());
+  };
+
+  for (mjtSolver solver : {mjSOL_NEWTON, mjSOL_CG}) {
+    model->opt.solver = solver;
+    model->opt.jacobian = mjJAC_DENSE;
+    MjDataPtr d_dense = MakeData(model);
+    setup_state(model, d_dense);
+
+    model->opt.jacobian = mjJAC_SPARSE;
+    MjDataPtr d_sparse = MakeData(model);
+    setup_state(model, d_sparse);
+
+    ASSERT_EQ(d_dense->ncon, 20);
+    ASSERT_EQ(d_dense->nefc, d_sparse->nefc);
+    EXPECT_EQ(d_dense->warning[mjWARN_BADQACC].number, 0);
+    EXPECT_EQ(d_sparse->warning[mjWARN_BADQACC].number, 0);
+
+    // confirm cone-state contacts occurred across all three batched dims
+    int cone_by_dim[7] = {0};
+    for (int c = 0; c < d_dense->ncon; ++c) {
+      int adr = d_dense->contact[c].efc_address;
+      if (adr >= 0 && d_dense->efc_state[adr] == mjCNSTRSTATE_CONE) {
+        cone_by_dim[d_dense->contact[c].dim]++;
+      }
+    }
+    EXPECT_GT(cone_by_dim[3], 0);
+    EXPECT_GT(cone_by_dim[4], 0);
+    EXPECT_GT(cone_by_dim[6], 0);
+    EXPECT_LT(d_dense->solver_fwdinv[0], MjTol(5e-11, 4e-2))
+        << "solver=" << solver;
+    EXPECT_LT(d_sparse->solver_fwdinv[0], MjTol(5e-11, 4e-2))
+        << "solver=" << solver;
+
+    for (int i = 0; i < model->nv; ++i) {
+      mjtNum scale = std::max(mjtNum{1}, mju_abs(d_dense->qacc[i]));
+      EXPECT_NEAR(d_dense->qacc[i] / scale, d_sparse->qacc[i] / scale,
+                  MjTol(5e-14, 2e-5))
+          << "solver=" << solver << " dof=" << i;
+    }
+  }
+}
+
+// Verify dense elliptic Newton does not latch cone folding on a single small
+// late-column cone contact (10*U << Lflops) after refactor_L fires on earlier
+// DOFs. On iteration 0, boxes 0..2 transition SATISFIED -> QUADRATIC with
+// 10*U_quad > Lflops while sphere 3 slides on DOFs 18..23 (10*U = 1050 vs
+// Lflops = 4900). Continuing to iteration 1 must stay on rank-1 cone updates
+// and match restarting from iteration 0's qacc (where FactorizeHessian passes
+// cost_L = 0), rather than latching folded Cholesky on H + V'*V.
+TEST_F(SolverTest, DenseEllipticConeFoldDoesNotLatch) {
+  constexpr char xml[] = R"(
+  <mujoco>
+    <option cone="elliptic" solver="Newton" jacobian="dense"
+            timestep="0.01" tolerance="0">
+      <flag island="disable"/>
+    </option>
+    <worldbody>
+      <geom type="plane" size="20 20 0.1" condim="1"/>
+      <body pos="-2 0 0.049">
+        <freejoint/>
+        <geom type="box" size="0.05 0.05 0.05" condim="1"/>
+      </body>
+      <body pos="0 0 0.049">
+        <freejoint/>
+        <geom type="box" size="0.05 0.05 0.05" condim="1"/>
+      </body>
+      <body pos="2 0 0.049">
+        <freejoint/>
+        <geom type="box" size="0.05 0.05 0.05" condim="1"/>
+      </body>
+      <body pos="4 0 0.095">
+        <freejoint/>
+        <geom type="sphere" size="0.1" condim="6" priority="1"
+              solimp="0.9999 0.9999 0.001" friction="0.5 0.05 0.01"/>
+      </body>
+    </worldbody>
+  </mujoco>
+  )";
+  char error[1024];
+  MjModelPtr model = LoadModelFromString(xml, error, sizeof(error));
+  ASSERT_THAT(model, NotNull()) << error;
+  ASSERT_EQ(model->nv, 24);
+
+  auto init_state = [](MjDataPtr& d) {
+    // small upward box qvel makes aref slightly negative so qacc=0 is
+    // SATISFIED (accepted over qacc_smooth=-9.81) and flips QUADRATIC on iter 0
+    for (int b = 0; b < 3; ++b) {
+      d->qvel[6 * b + 2] = 0.03;
+    }
+    d->qvel[18] = 2.5;
+    d->qvel[19] = -1.3;
+    d->qvel[20] = -0.2;
+    d->qvel[21] = 1.7;
+    d->qvel[22] = -0.9;
+    d->qvel[23] = 2.1;
+  };
+
+  // two continuous Newton iterations: iter 0 triggers refactor_L on boxes 0..2
+  model->opt.iterations = 2;
+  MjDataPtr d_cont = MakeData(model);
+  init_state(d_cont);
+  mj_forward(model.get(), d_cont.get());
+  ASSERT_EQ(d_cont->solver_niter[0], 2);
+  ASSERT_EQ(d_cont->solver[0].nchange, 12);
+  ASSERT_EQ(d_cont->solver[0].nupdate, 17);
+
+  // 1 + 1 restart: pass 2 starts at iter 0's qacc where FactorizeHessian
+  // passes cost_L = 0 and therefore uses rank-1 HessianConeUpdate
+  model->opt.iterations = 1;
+  MjDataPtr d_step1 = MakeData(model);
+  init_state(d_step1);
+  mj_forward(model.get(), d_step1.get());
+  int sphere_adr = d_step1->contact[d_step1->ncon - 1].efc_address;
+  ASSERT_EQ(d_step1->efc_state[sphere_adr], mjCNSTRSTATE_CONE);
+
+  MjDataPtr d_step2 = MakeData(model);
+  init_state(d_step2);
+  mju_copy(d_step2->qacc_warmstart, d_step1->qacc, model->nv);
+  mj_forward(model.get(), d_step2.get());
+  ASSERT_EQ(d_cont->efc_state[sphere_adr], mjCNSTRSTATE_CONE);
+
+  // sphere 3 (DOFs 18..23) is decoupled from boxes 0..2; stiff solimp separates
+  // folded cholFactor(H + V'*V) (~7.7e-13 / ~1.0e-4) from rank-1
+  // cholUpdate(L, V) (~7.1e-14 / ~7.3e-7)
+  for (int i = 18; i < 24; ++i) {
+    mjtNum scale = std::max(mjtNum{1}, mju_abs(d_step2->qacc[i]));
+    EXPECT_NEAR(d_cont->qacc[i] / scale, d_step2->qacc[i] / scale,
+                MjTol(2e-13, 2e-5))
+        << "dof=" << i;
   }
 }
 

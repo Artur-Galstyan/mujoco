@@ -94,9 +94,9 @@ void mju_combineSparseInc(mjtNum* dst, const mjtNum* src, int n, mjtNum a, mjtNu
                           int dst_nnz, int src_nnz, const int* dst_ind, const int* src_ind);
 
 // dst += scl * src, only at common non-zero indices
-void mju_addToSclSparseInc(mjtNum* dst, const mjtNum* src,
-                           int nnzdst, const int* inddst,
-                           int nnzsrc, const int* indsrc, mjtNum scl);
+MJAPI void mju_addToSclSparseInc(mjtNum* dst, const mjtNum* src,
+                                 int nnzdst, const int* inddst,
+                                 int nnzsrc, const int* indsrc, mjtNum scl);
 
 // add to sparse matrix: dst = dst + scl*src, return nnz of result
 int mju_addToSparseMat(mjtNum* dst, const mjtNum* src, int n, int nrow, mjtNum scl,
@@ -241,9 +241,16 @@ mjtNum mju_dotSparse(const mjtNum* vec1, const mjtNum* vec2, int nnz1, const int
     res = v4_sum(sum);
   }
 
-  // scalar part
-  for (; i < nnz1; i++) {
+  // scalar part (at most 3 remaining elements, left-to-right)
+  int rem = nnz1 - i;
+  if (rem >= 1) {
     res += vec1[i] * vec2[ind1[i]];
+    if (rem >= 2) {
+      res += vec1[i+1] * vec2[ind1[i+1]];
+      if (rem >= 3) {
+        res += vec1[i+2] * vec2[ind1[i+2]];
+      }
+    }
   }
 
   return res;

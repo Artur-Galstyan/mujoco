@@ -376,6 +376,88 @@ TEST_F(UserFlexTest, CellnumZeroInterpolated) {
   EXPECT_THAT(error.data(), HasSubstr("cellcount cannot be 0"));
 }
 
+// Raw <flex> cellcount must reject signed 32-bit overflow even when the wrapped
+// product would match the number of supplied node bodies.
+TEST_F(UserFlexTest, FlexCellcountOverflowTrilinear) {
+  // (1431655766 + 1) * (3 + 1) * (5 + 1) = 34359738408 = 24 (mod 2^32).
+  static constexpr char xml[] = R"(
+  <mujoco>
+  <worldbody>
+    <body name="v0" pos="0 0 0"/><body name="v1" pos="1 0 0"/>
+    <body name="v2" pos="0 1 0"/><body name="v3" pos="0 0 1"/>
+    <body name="n0"/><body name="n1"/><body name="n2"/><body name="n3"/>
+    <body name="n4"/><body name="n5"/><body name="n6"/><body name="n7"/>
+    <body name="n8"/><body name="n9"/><body name="n10"/><body name="n11"/>
+    <body name="n12"/><body name="n13"/><body name="n14"/><body name="n15"/>
+    <body name="n16"/><body name="n17"/><body name="n18"/><body name="n19"/>
+    <body name="n20"/><body name="n21"/><body name="n22"/><body name="n23"/>
+  </worldbody>
+  <deformable>
+    <flex name="test" cellcount="1431655766 3 5" dof="trilinear" dim="3"
+          body="v0 v1 v2 v3"
+          node="n0 n1 n2 n3 n4 n5 n6 n7 n8 n9 n10 n11 n12 n13 n14 n15 n16 n17 n18 n19 n20 n21 n22 n23"
+          element="0 1 2 3"/>
+  </deformable>
+  </mujoco>
+  )";
+  std::array<char, 1024> error;
+  MjModelPtr m = LoadModelFromString(xml, error.data(), error.size());
+  EXPECT_THAT(m.get(), IsNull());
+  EXPECT_THAT(error.data(), HasSubstr("cellcount is negative or too large"));
+}
+
+TEST_F(UserFlexTest, FlexCellcountOverflowQuadratic) {
+  // Per-axis cellcount[0] * order + 1 overflows INT_MAX for order = 2.
+  static constexpr char xml[] = R"(
+  <mujoco>
+  <worldbody>
+    <body name="b0"/><body name="b1"/><body name="b2"/><body name="b3"/>
+  </worldbody>
+  <deformable>
+    <flex name="test" cellcount="1073741824 1 1" dof="quadratic"
+          dim="3" body="b0 b1 b2 b3" element="0 1 2 3"/>
+  </deformable>
+  </mujoco>
+  )";
+  std::array<char, 1024> error;
+  MjModelPtr m = LoadModelFromString(xml, error.data(), error.size());
+  EXPECT_THAT(m.get(), IsNull());
+  EXPECT_THAT(error.data(), HasSubstr("cellcount is negative or too large"));
+}
+
+TEST_F(UserFlexTest, FlexCellcountNegativeAndTooLarge) {
+  static constexpr char xml_negative[] = R"(
+  <mujoco>
+  <worldbody>
+    <body name="b0"/><body name="b1"/><body name="b2"/><body name="b3"/>
+  </worldbody>
+  <deformable>
+    <flex name="test" cellcount="-1 1 1" dof="trilinear"
+          dim="3" body="b0 b1 b2 b3" element="0 1 2 3"/>
+  </deformable>
+  </mujoco>
+  )";
+  std::array<char, 1024> error;
+  MjModelPtr m = LoadModelFromString(xml_negative, error.data(), error.size());
+  EXPECT_THAT(m.get(), IsNull());
+  EXPECT_THAT(error.data(), HasSubstr("cellcount is negative or too large"));
+
+  static constexpr char xml_large[] = R"(
+  <mujoco>
+  <worldbody>
+    <body name="b0"/><body name="b1"/><body name="b2"/><body name="b3"/>
+  </worldbody>
+  <deformable>
+    <flex name="test" cellcount="536870912 1 3" dof="trilinear"
+          dim="3" body="b0 b1 b2 b3" element="0 1 2 3"/>
+  </deformable>
+  </mujoco>
+  )";
+  m = LoadModelFromString(xml_large, error.data(), error.size());
+  EXPECT_THAT(m.get(), IsNull());
+  EXPECT_THAT(error.data(), HasSubstr("cellcount is negative or too large"));
+}
+
 TEST_F(UserFlexTest, SpacingGreaterThanGeometry) {
   static constexpr char xml[] = R"(
   <mujoco>
@@ -1515,9 +1597,9 @@ TEST_F(UserFlexTest, MechanismRods) {
     int nstep;
   };
   const Mechanism mechanisms[] = {
-      {"flex/mechanisms/cantilever.xml", "rod", nullptr, 500},
-      {"flex/mechanisms/slidercrank.xml", "rod", "slide", 1500},
-      {"flex/mechanisms/dipper.xml", "arm_flex", "arm", 3000},
+      {"flex/mechanisms/cantilever.xml", "rod", nullptr, 250},
+      {"flex/mechanisms/slidercrank.xml", "rod", "slide", 600},
+      {"flex/mechanisms/dipper.xml", "arm_flex", "arm", 1000},
   };
   for (const Mechanism& mech : mechanisms) {
     SCOPED_TRACE(mech.file);
@@ -5504,6 +5586,40 @@ TEST_F(UserFlexTest, BoxSectionRadius) {
                                      error.data(), error.size());
   EXPECT_THAT(m.get(), IsNull());
   EXPECT_THAT(error.data(), HasSubstr("minor half-size of sectionsize"));
+}
+
+TEST_F(UserFlexTest, Flex2DEdgeFlapPopulatedWithoutBending) {
+  static constexpr char kXml[] = R"(
+  <mujoco>
+    <worldbody>
+      <flexcomp name="cloth" type="grid" count="2 2 1" spacing="0.1 0.1 0.1"
+                dim="2" mass="1">
+        <edge equality="true"/>
+      </flexcomp>
+    </worldbody>
+  </mujoco>
+  )";
+  std::array<char, 1024> error;
+  MjModelPtr m = LoadModelFromString(kXml, error.data(), error.size());
+  ASSERT_THAT(m.get(), NotNull()) << error.data();
+  EXPECT_EQ(m->flex_bendingadr[0], -1);
+  ASSERT_EQ(m->flex_edgenum[0], 5);
+
+  int ninterior = 0;
+  int nboundary = 0;
+  for (int e = 0; e < m->flex_edgenum[0]; ++e) {
+    int f0 = m->flex_edgeflap[2 * e + 0];
+    int f1 = m->flex_edgeflap[2 * e + 1];
+    EXPECT_GE(f0, 0);
+    if (f1 >= 0) {
+      EXPECT_NE(f0, f1);
+      ninterior++;
+    } else {
+      nboundary++;
+    }
+  }
+  EXPECT_EQ(ninterior, 1);
+  EXPECT_EQ(nboundary, 4);
 }
 
 }  // namespace

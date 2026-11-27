@@ -120,13 +120,19 @@ int mjc_PlaneCylinder(const mjModel* m, mjData* d, mjPreContact* con, int g1, in
   mjtNum vec[3] = {pos2[0] - pos1[0], pos2[1] - pos1[1], pos2[2] - pos1[2]};
   mjtNum dist0 = mju_dot3(vec, normal);
 
-  // remove component of -normal along axis, compute length
-  mju_scl3(vec, axis, prjaxis);
-  mju_subFrom3(vec, normal);
+  // remove component of -normal along axis via double cross product, compute length
+  mjtNum tmp[3];
+  mji_cross(tmp, axis, normal);
+  mji_cross(vec, axis, tmp);
+#ifdef mjUSESINGLE
+  const mjtNum eps_sqr = 1e-12f;
+#else
+  const mjtNum eps_sqr = mjMINVAL*mjMINVAL;
+#endif
   mjtNum len_sqr = mju_dot3(vec, vec);
 
   // general configuration: normalize vector, scale by radius
-  if (len_sqr >= mjMINVAL*mjMINVAL) {
+  if (len_sqr >= eps_sqr) {
     mjtNum scl = size2[0]/mju_sqrt(len_sqr);
     vec[0] *= scl;
     vec[1] *= scl;
@@ -504,28 +510,34 @@ void mjc_triWeights(mjtNum w[3], const mjtNum p[3], const mjtNum a[3], const mjt
   mjtNum vc = dot1 * dot4 - dot3 * dot2;
 
   // edge region AB
-  if (vc <= 0 && dot1 >= 0 && dot3 <= 0) {
+  if (vc <= 0 && dot1 >= 0 && dot3 <= 0 && dot1 > dot3) {
     mjtNum t = dot1 / (dot1 - dot3);
     w[0] = 1 - t,  w[1] = t, w[2] = 0;
     return;
   }
 
   // edge region AC
-  if (vb <= 0 && dot2 >= 0 && dot6 <= 0) {
+  if (vb <= 0 && dot2 >= 0 && dot6 <= 0 && dot2 > dot6) {
     mjtNum t = dot2 / (dot2 - dot6);
     w[0] = 1 - t, w[1] = 0, w[2] = t;
     return;
   }
 
   // edge region BC
-  if (va <= 0 && (dot4 - dot3) >= 0 && (dot5 - dot6) >= 0) {
-    mjtNum t = (dot4 - dot3) / ((dot4 - dot3) + (dot5 - dot6));
+  mjtNum d43 = dot4 - dot3, d56 = dot5 - dot6;
+  if (va <= 0 && d43 >= 0 && d56 >= 0 && d43 + d56 > 0) {
+    mjtNum t = d43 / (d43 + d56);
     w[0] = 0, w[1] = 1 - t, w[2] = t;
     return;
   }
 
   // face region ABC
-  mjtNum d = 1.0 / (va + vb + vc), t = vb * d, u = vc * d;
+  mjtNum denom = va + vb + vc;
+  if (denom <= 0) {
+    w[0] = 1, w[1] = 0, w[2] = 0;
+    return;
+  }
+  mjtNum d = 1.0 / denom, t = vb * d, u = vc * d;
   w[0] = 1 - t - u, w[1] = t, w[2] = u;
 }
 

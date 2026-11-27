@@ -36,9 +36,23 @@ Engine
   `1733 <https://github.com/google-deepmind/mujoco_warp/issues/1733>`__ and to :github:user:`vishalkotak` for the
   implementation in :doc:`MJWarp <mjwarp/index>` pull request
   `2014 <https://github.com/google-deepmind/mujoco_warp/pull/2014>`__.
+- Fixed capsule-box collisions when the capsule's centerline intersects the box, which could miss the contact.
+- Fixed floating-point cancellation and non-orthogonal fallback frames in ``mju_makeFrame`` and ``mjc_PlaneCylinder``
+  for plane-capsule and plane-cylinder contacts on tilted planes. Previously, axes parallel or nearly parallel to a
+  tilted plane normal could produce non-orthogonal or singular contact frames and inaccurate contact depths (especially
+  in single precision). Discovered via :doc:`MJWarp <mjwarp/index>` issue
+  `1949 <https://github.com/google-deepmind/mujoco_warp/issues/1949>`__ and pull requests
+  `1950 <https://github.com/google-deepmind/mujoco_warp/pull/1950>`__ (:github:user:`YannBerthelot`) and
+  `1989 <https://github.com/google-deepmind/mujoco_warp/pull/1989>`__ (:github:user:`etaoxing`).
 
 Deformables
 ^^^^^^^^^^^
+- Fixed capsule collision against 2D :ref:`flexes<deformable-flex>` missing contacts along the capsule shaft (when
+  crossing triangle edges, lying coplanar with a triangle, or piercing a triangle interior) and fixed a NaN for
+  zero-length capsules and degenerate triangles. Existing models with capsule--2D-flex contacts can change behavior.
+  ``mjModel.flex_edgeflap`` is now populated for all 2D flexes, not only those with bending, so that interior shared
+  edges do not generate opposing contacts. Code that used a valid flap to detect bending must check
+  ``mjModel.flex_bendingadr`` instead.
 - Fixed effective-metric PCG stalls and spurious ``mjWARN_INERTIA`` warnings on 2D flexes with passive contacts by
   including fully covered passive flex contacts in the sparse Cholesky preconditioner. Previously, passive flex
   contacts were omitted from the preconditioner, causing the implicit solve to stall or under-converge on stacked cloth
@@ -48,11 +62,15 @@ Deformables
   of interpolated flexes. Points of an interpolated flex, such as contact points, are now evaluated in their active
   cell: their natural cell, or the nearest non-empty cell if it is empty, consistently with the vertex positions
   (``flex_vertcell``). Previously contact weights near pruned cells could weight the pinned nodes of the empty cell.
-- The ``discrete`` :ref:`integrator<option-integrator>` smooth solve for 3D and interpolated
-  :ref:`flexes<deformable-flex>` now uses symmetric Gauss-Seidel (Eisenstat) preconditioning instead of diagonal
-  preconditioning, reusing the assembled stiffness matrix in place with zero extra arena memory. This cuts smooth-solve
-  iterations 2-3x and speeds up stepping by ~15% on ``model/plastic/clay.xml`` and
-  ``model/flex/mechanisms/cantilever.xml`` (up to ~1.9x on unconstrained 3D tetrahedral meshes).
+- Under the ``discrete`` :ref:`integrator<option-integrator>`, the unconstrained smooth solve (``qacc_smooth``) now
+  follows the selected :ref:`solver<option-solver>`: ``Newton`` solves :math:`(M + S)\,\dot{v}_{\text{smooth}} = f`
+  directly by Cholesky (reusing the 3x3-block sparse factor on covered 1D/2D flexes and general sparse/dense Cholesky
+  otherwise), eliminating ``mjWARN_INERTIA`` under-convergence on 3D passive contacts and speeding up stiff
+  interpolated-flex mechanisms (``model/flex/mechanisms/cantilever.xml`` ~3.3x faster). Under ``CG``, the smooth solve
+  for 3D and interpolated :ref:`flexes<deformable-flex>` uses symmetric Gauss-Seidel (Eisenstat) preconditioning
+  instead of diagonal preconditioning, reusing the assembled stiffness matrix in place with zero extra arena memory
+  (cutting smooth-solve iterations 2-3x and speeding up stepping by ~15% on ``model/plastic/clay.xml``, and up to
+  ~1.9x on unconstrained 3D tetrahedral meshes).
 
 Compiler
 ^^^^^^^^
@@ -147,6 +165,8 @@ Rendering
 - Fixed Filament planar reflections leaking geometry behind or crossing the mirror plane by clipping the reflection
   camera at the mirror plane with an oblique near-plane projection (:issue:`3902`).
 - Added ``image_diffuse_scale`` to :ref:`mjrfLightParams` to control the diffuse colour of image based lights.
+- Builtin textures with mark=\"cross\" now draw a 2-pixel wide cross on even-sized textures so that it is centered.
+- Fixed Filament cube textures with texuniform being scaled inversely, they now match the classic renderer.
 
 Python bindings
 ^^^^^^^^^^^^^^^
@@ -156,8 +176,8 @@ Python bindings
 
 Studio
 ^^^^^^
-- Text can now be pasted into text fields of the MuJoCo Studio :ref:`Web Viewer <StudioWebViewers>` with ``Ctrl+V``
-  (``Cmd+V`` on macOS).
+- Text can now be pasted into text fields of :ref:`MuJoCo Live <StudioLive>` and the MuJoCo Studio
+  :ref:`Web Viewer <StudioWebViewers>` with ``Ctrl+V`` (``Cmd+V`` on macOS).
 
 Plugins
 ^^^^^^^
@@ -172,6 +192,15 @@ OpenUSD
 - The native C++ :doc:`OpenUSD exporter <OpenUSD/exporting>` and ``LayerSink`` now author ``xformOp:translate``
   (``double3``) and ``xformOp:orient`` (``quatd``) instead of ``xformOp:transform`` (``matrix4d``), avoiding shear
   artifacts when USD or external renderers interpolate between time samples.
+
+Bug fixes
+^^^^^^^^^
+- Under the ``discrete`` :ref:`integrator<option-integrator>`, negative flex :ref:`damping<flex-elasticity-damping>` is
+  clamped to zero in the effective metric, like negative joint and tendon damping, and its force is integrated
+  explicitly. Previously it made the metric indefinite.
+- Under the ``discrete`` :ref:`integrator<option-integrator>`, the ellipsoid :ref:`fluid model<flEllipsoid>` contributes
+  the dissipative part of its drag derivative to the effective metric. The symmetrized derivative used before is
+  indefinite for slender shapes at small angles of attack.
 
 Version 4.0.1 (November 11, 2026)
 ---------------------------------
