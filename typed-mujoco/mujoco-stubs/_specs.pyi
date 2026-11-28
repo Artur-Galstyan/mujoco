@@ -26,6 +26,11 @@ from typing_extensions import Self
 import mujoco._enums
 import mujoco._structs
 
+# ponytail: union, not Mapping: pybind11 rejects non-dict mappings at runtime.
+_Assets: typing.TypeAlias = (
+  dict[str, str] | dict[str, bytes] | dict[str, str | bytes]
+)
+
 __all__: list[str] = [
   'MjByteVec',
   'MjCharVec',
@@ -94,7 +99,10 @@ class MjSpec:
   2
   """
 
-  assets: dict[str, str | bytes]
+  @property
+  def assets(self) -> dict[str, str | bytes]: ...
+  @assets.setter
+  def assets(self, value: _Assets) -> None: ...
   authored: MjsAuthored
   comment: str
   compiler: MjsCompiler
@@ -112,7 +120,7 @@ class MjSpec:
   def from_file(
     filename: str,
     include: collections.abc.Mapping[str, bytes] | None = None,
-    assets: dict[str, str | bytes] | None = None,
+    assets: _Assets | None = None,
     vfs: MjVfs | None = None,
   ) -> MjSpec:
     """
@@ -136,7 +144,7 @@ class MjSpec:
   def from_string(
     xml: str,
     include: collections.abc.Mapping[str, bytes] | None = None,
-    assets: dict[str, str | bytes] | None = None,
+    assets: _Assets | None = None,
     vfs: MjVfs | None = None,
   ) -> MjSpec:
     """

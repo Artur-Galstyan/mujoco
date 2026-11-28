@@ -86,6 +86,10 @@ def check_types() -> None:
   mujoco.mj_jac(model, data, jacp, jacr, np.zeros(3), 0)
 
   spec = mujoco.MjSpec()
+  meshes: dict[str, bytes] = {}
+  spec.assets = meshes
+  assert_type(spec.assets, dict[str, str | bytes])
+  mujoco.MjSpec.from_string('<mujoco/>', assets=meshes)
   body = spec.worldbody.add_body(name='body', pos=[0.0, 0.0, 0.0])
   assert_type(body, mujoco.MjsBody)
   assert_type(body.fuse, int)

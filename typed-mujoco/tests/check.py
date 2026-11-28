@@ -688,6 +688,10 @@ def check_typing(cwd: Path, package: Path) -> None:
       'invalid-argument-type',
     ),
     'bad_field': ("data.time = 'no'", 'invalid-assignment'),
+    'bad_assets': (
+      'spec.assets = types.MappingProxyType({})',
+      'invalid-assignment',
+    ),
     'bad_spec': ("spec.worldbody.add_body(pos='bad')", 'invalid-argument-type'),
     'bad_callback': (
       'mujoco.set_mjcb_control(lambda: None)',
@@ -742,7 +746,7 @@ def check_typing(cwd: Path, package: Path) -> None:
   }
   prefix = (
     'import numpy as np\nimport mujoco\n'
-    'from mujoco import batch, mjrf\n'
+    'import types\nfrom mujoco import batch, mjrf\n'
     'from mujoco.studio import ux\n'
     'model = mujoco.MjModel.from_xml_string("<mujoco/>")\n'
     'data = mujoco.MjData(model)\nspec = mujoco.MjSpec()\n'
